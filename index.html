@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RAB Rumah & Gedung</title>
+  <meta name="description" content="Penyusunan RAB rumah & gedung sesuai AHSP (Permen PUPR 8/2023) — by DG">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#0E2A45">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="RAB">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <img src="icons/icon-192.png" alt="RAB Rumah & Gedung">
+    <div class="title">
+      <h1 id="pageTitle">RAB Rumah & Gedung</h1>
+      <div class="sub" id="pageSub">by DG</div>
+    </div>
+    <button class="sync-chip" id="syncChip" type="button" title="Sinkronkan sekarang"><span class="dot"></span><span class="lbl">Memuat…</span></button>
+  </header>
+
+  <main id="app"><div class="empty">Memuat aplikasi…</div></main>
+
+  <nav class="bottom-nav" id="nav">
+    <a href="#/dashboard" data-nav="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      Dashboard</a>
+    <a href="#/rab" data-nav="rab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
+      RAB</a>
+    <a href="#/jadwal" data-nav="jadwal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M7 14h5M7 17h8"/></svg>
+      Jadwal</a>
+    <a href="#/lapangan" data-nav="lapangan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M5 20V9l7-5 7 5v11"/><path d="M9 20v-6h6v6"/></svg>
+      Lapangan</a>
+    <a href="#/master" data-nav="master">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+      Master</a>
+  </nav>
+
+  <div class="toasts" id="toasts"></div>
+  <div id="modalRoot"></div>
+
+  <script src="calc.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

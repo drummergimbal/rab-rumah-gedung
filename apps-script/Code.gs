@@ -1,6 +1,6 @@
 /* ============================================================
  * RAB Rumah & Gedung — Backend Google Apps Script (by DG)
- * Versi 1.0.0 (Tahap 1)
+ * Versi 1.1.0 (Tahap 1 + Tahap 2 Tenaga Kerja)
  *
  * File di project Apps Script:
  *   Code.gs  → file ini
@@ -10,7 +10,7 @@
  * dan Sheet dibuka ulang. Jalankan "1. Setup Awal" sekali saja.
  * ============================================================ */
 
-var APP = { name: 'RAB Rumah & Gedung', version: '1.0.0', tz: 'Asia/Jakarta' };
+var APP = { name: 'RAB Rumah & Gedung', version: '1.1.0', tz: 'Asia/Jakarta' };
 
 var THEME = {
   primary: '#1F4E79', primaryDark: '#0E2A45', primary50: '#EAF2FA',
@@ -56,6 +56,7 @@ var SCHEMA = {
   TENAGA_REKAP: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'JENIS_TENAGA', 'TOTAL_OH:num', 'UPAH_HARIAN:rp', 'TOTAL_UPAH:rp', 'ORANG_PUNCAK:num'] },
   BORONGAN_UPAH: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'MODE', 'ITEM_ID', 'SATUAN', 'HARGA:rp', 'JUMLAH_TUKANG:num', 'HARI:num', 'TOTAL:rp', 'CATATAN'] },
   JADWAL: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'ITEM_ID', 'DURASI:num', 'MULAI:date', 'SELESAI:date', 'PREDECESSOR', 'JENIS_RELASI', 'LAG:num', 'JUMLAH_TUKANG:num'] },
+  TERMIN_UPAH: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'URUTAN:num', 'LABEL', 'BASIS', 'PERSEN:pct', 'NOMINAL:rp', 'MINGGU_KE:num', 'STATUS', 'CATATAN'] },
   PROGRES: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'MINGGU_KE:num', 'ITEM_ID', 'PERSEN_AKTUAL:pct', 'TANGGAL:date', 'CATATAN', 'FOTO'] },
   LIBUR: { group: 'SISTEM', cols: ['TANGGAL:date', 'KETERANGAN'] },
   MILESTONE: { group: 'SISTEM', cols: ['PROYEK_ID', 'NAMA', 'TANGGAL:date', 'STATUS'] },
@@ -91,7 +92,10 @@ var DROPDOWN = {
   'PENAWARAN.STATUS': ['DRAFT', 'TERKIRIM', 'NEGOSIASI', 'DITERIMA', 'DITOLAK', 'KEDALUWARSA'],
   'PENAWARAN.DETAIL': ['RINGKAS', 'STANDAR', 'LUMPSUM'],
   'PENAWARAN.PPN_MODE': ['BELUM', 'TERMASUK', 'TIDAK'],
-  'CCO.STATUS': ['DIAJUKAN', 'DISETUJUI', 'DITOLAK']
+  'CCO.STATUS': ['DIAJUKAN', 'DISETUJUI', 'DITOLAK'],
+  'BORONGAN_UPAH.MODE': ['M2', 'ITEM', 'HARIAN_TUKANG', 'HARIAN_PEKERJA'],
+  'TERMIN_UPAH.BASIS': ['AHSP', 'M2', 'ITEM', 'HARIAN'],
+  'TERMIN_UPAH.STATUS': ['DRAFT', 'DISETUJUI']
 };
 
 var FORMAT = {
@@ -113,6 +117,10 @@ var DEFAULT_SETTINGS = [
   ['MASA_BERLAKU_HARI', 14, 'Masa berlaku penawaran default (hari)'],
   ['TERMIN_DEFAULT', 'DP 30% – Progres 30% – Progres 30% – Retensi 10%', 'Skema termin default penawaran'],
   ['TAMPIL_CREDIT', 'YA', 'Tampilkan tulisan kecil "dibuat dengan RAB Rumah & Gedung by DG" di dokumen'],
+  ['JAM_KERJA_HARI', 8, 'Jam kerja per hari (1 OH = 8 jam)'],
+  ['HARI_KERJA_MINGGU', 6, 'Hari kerja per minggu'],
+  ['RASIO_KEPALA_TUKANG', 10, 'Peringatan bila 1 kepala tukang membawahi lebih dari … tukang'],
+  ['RASIO_MANDOR_PEKERJA', 20, 'Peringatan bila 1 mandor membawahi lebih dari … pekerja + tukang'],
   ['ROOT_FOLDER_ID', '', 'Diisi otomatis saat setup'],
   ['MASTER_FOLDER_ID', '', 'Diisi otomatis saat setup'],
   ['PROFIL_FOLDER_ID', '', 'Diisi otomatis saat setup'],
@@ -127,6 +135,7 @@ function onOpen() {
     .addItem('1. Setup Awal', 'setupSheets')
     .addItem('2. Tampilkan Token API', 'showToken')
     .addSeparator()
+    .addItem('Perbarui Struktur Sheet (setelah update)', 'upgradeSheets')
     .addItem('Rapikan Tampilan (Apply Theme)', 'applyThemeAll')
     .addItem('Backup Sekarang', 'weeklyBackup')
     .addItem('Buat Token Baru', 'resetToken')
@@ -161,6 +170,18 @@ function setupSheets() {
       'Lalu buka menu "RAB Rumah & Gedung → 2. Tampilkan Token API" untuk menyalin token ke aplikasi.',
       SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {}
+}
+
+/* Dipakai setelah update versi: tambah sheet/kolom/pengaturan baru tanpa menyentuh data */
+function upgradeSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var before = ss.getSheets().map(function (s) { return s.getName(); });
+  Object.keys(SCHEMA).forEach(function (name) { ensureSheet_(ss, name); });
+  seedSettings_();
+  Object.keys(SCHEMA).forEach(function (name) { if (before.indexOf(name) < 0) applyTheme(name); });
+  orderSheets_(ss);
+  log_('UPGRADE', '', '', 'Struktur diperbarui ke v' + APP.version, 'SCRIPT');
+  try { SpreadsheetApp.getUi().alert('Struktur sheet sudah diperbarui ke v' + APP.version + ' ✅'); } catch (e) {}
 }
 
 function headersOf_(name) {

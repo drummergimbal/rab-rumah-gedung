@@ -1,12 +1,12 @@
 /* ============================================================
- * RAB Rumah & Gedung — PWA (by DG) · v1.0.0 · Tahap 1
+ * RAB Rumah & Gedung — PWA (by DG) · v1.1.0 · Tahap 1–2
  * RAB + AHSP/HSD + Master + Import + Profil + Penawaran + PDF ke Drive
  * ============================================================ */
 'use strict';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const TABLES = ['PROYEK', 'DIVISI', 'RAB_ITEM', 'VOLUME_DETAIL', 'REVISI', 'REVISI_ITEM', 'AHSP_HEADER', 'AHSP_KOMPONEN', 'AHSP_VERSI',
   'HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT', 'WILAYAH', 'PENGATURAN', 'PROFIL_USAHA', 'TEMPLATE_SYARAT', 'IMPORT_MAPPING',
-  'PENAWARAN', 'PENAWARAN_ITEM', 'FILES'];
+  'PENAWARAN', 'PENAWARAN_ITEM', 'FILES', 'JADWAL', 'TENAGA_REKAP', 'BORONGAN_UPAH', 'TERMIN_UPAH'];
 const MASTER_TABLES = ['AHSP_HEADER', 'AHSP_KOMPONEN', 'HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT'];
 const HSD_TABLE = { UPAH: 'HSD_UPAH', BAHAN: 'HSD_BAHAN', ALAT: 'HSD_ALAT' };
 const THEME = {
@@ -18,12 +18,12 @@ const STATUS_CLASS = {
   'TERVERIFIKASI': 'success', 'OK': 'success', 'DITERIMA': 'success', 'SELESAI': 'success', 'RESMI': 'success',
   'PERLU CEK': 'warning', 'PERLU HARGA': 'warning', 'DRAFT': 'warning', 'NEGOSIASI': 'warning',
   'DITOLAK': 'danger', 'KEDALUWARSA': 'danger', 'BATAL': 'danger',
-  'TERKIRIM': 'info', 'BERJALAN': 'info', 'PENAWARAN': 'info', 'MODIFIKASI': 'primary', 'CUSTOM': 'accent', 'HARGA PASAR': 'accent'
+  'DISETUJUI': 'success', 'TERKIRIM': 'info', 'BERJALAN': 'info', 'PENAWARAN': 'info', 'MODIFIKASI': 'primary', 'CUSTOM': 'accent', 'HARGA PASAR': 'accent'
 };
 const DEFAULTS = {
   OVERHEAD_PCT: 10, PPN_PCT: 11, KONTINJENSI_PCT: 5, PEMBULATAN: 1000, WILAYAH_DEFAULT: 'Kabupaten Bogor',
   VERSI_AHSP_AKTIF: 'CONTOH', MODE_DEFAULT: 'RUMAH', AMBANG_DEVIASI_HSP: 30, FORMAT_NOMOR_PENAWARAN: '{NO}/PNW/RAB/{BLN}/{THN}',
-  MASA_BERLAKU_HARI: 14, TERMIN_DEFAULT: 'DP 30% – Progres 30% – Progres 30% – Retensi 10%', TAMPIL_CREDIT: 'YA'
+  MASA_BERLAKU_HARI: 14, JAM_KERJA_HARI: 8, HARI_KERJA_MINGGU: 6, RASIO_KEPALA_TUKANG: 10, RASIO_MANDOR_PEKERJA: 20, TERMIN_DEFAULT: 'DP 30% – Progres 30% – Progres 30% – Retensi 10%', TAMPIL_CREDIT: 'YA'
 };
 const VENDOR = {
   jspdf: 'vendor/jspdf.umd.min.js', autotable: 'vendor/jspdf.plugin.autotable.min.js', xlsx: 'vendor/xlsx.full.min.js'
@@ -575,7 +575,7 @@ route('/dashboard', () => {
     <div class="grid k4">
       <div class="card kpi primary"><div class="label">Total RAB</div><div class="value">${rp(rk.total)}</div><div class="hint">${rk.ppnPct ? 'termasuk PPN ' + pct(rk.ppnPct, 0) : 'tanpa PPN'}</div></div>
       <div class="card kpi"><div class="label">Harga per m²</div><div class="value">${rk.perM2 ? rp(rk.perM2) : '-'}</div><div class="hint">${rk.luas ? N(rk.luas, 2) + ' m² bangunan' : 'isi luas bangunan'}</div></div>
-      <div class="card kpi"><div class="label">Realisasi</div><div class="value muted">-</div><div class="hint">aktif di tahap 4</div></div>
+      ${(() => { const t = tenagaOf(p, rk); return `<a class="card kpi clickable" href="#/rab/${pid}/tenaga" style="text-decoration:none;color:inherit"><div class="label">Tenaga kerja</div><div class="value">${t.totalOH ? N(t.totalOH, 0) + ' OH' : '-'}</div><div class="hint">${t.totalDurasi ? N(t.totalDurasi) + ' hari kerja · puncak ' + N(Math.max(0, ...t.weeks.map(w => w.orang))) + ' org' : 'isi durasi di tab Tenaga'}</div></a>`; })()}
       <div class="card kpi"><div class="label">Progres</div><div class="value muted">-</div><div class="hint">aktif di tahap 3</div></div>
     </div>
     <div class="grid md2" style="margin-top:12px">
@@ -680,11 +680,11 @@ function projectForm(p) {
 
 /* ---------- Placeholder tahap berikutnya ---------- */
 route('/jadwal', () => { setTitle('Jadwal'); view(`<div class="page-head"><h2>Jadwal & Kurva S</h2></div><div class="card empty"><p>Modul Timeline, Gantt chart, dan Kurva S dibangun di <strong>Tahap 3</strong>.</p><p class="small">Data RAB yang kamu susun sekarang otomatis menjadi dasar jadwal nanti.</p></div>`); });
-route('/lapangan', () => { setTitle('Lapangan'); view(`<div class="page-head"><h2>Lapangan</h2></div><div class="card empty"><p>Progres, realisasi biaya, opname/BAP, dan pekerjaan tambah-kurang dibangun di <strong>Tahap 4</strong>.</p><p class="small">Tenaga kerja & jumlah tukang dibangun di <strong>Tahap 2</strong>.</p></div>`); });
+route('/lapangan', () => { setTitle('Lapangan'); view(`<div class="page-head"><h2>Lapangan</h2></div><div class="card empty"><p>Progres, realisasi biaya, opname/BAP, dan pekerjaan tambah-kurang dibangun di <strong>Tahap 4</strong>.</p><p class="small">Tenaga kerja & jumlah tukang sudah tersedia di tab <strong>Tenaga</strong> pada tiap proyek.</p></div>`); });
 /* ============================================================
  * Halaman proyek: Item | Rekap | Material | Penawaran | Revisi | Info
  * ============================================================ */
-const PTABS = [['item', 'Item RAB'], ['rekap', 'Rekap'], ['material', 'Material'], ['penawaran', 'Penawaran'], ['revisi', 'Revisi'], ['info', 'Info & File']];
+const PTABS = [['item', 'Item RAB'], ['rekap', 'Rekap'], ['material', 'Material'], ['tenaga', 'Tenaga'], ['penawaran', 'Penawaran'], ['revisi', 'Revisi'], ['info', 'Info & File']];
 route('/rab/:id', id => projectView(id, 'item'));
 route('/rab/:id/:tab', (id, tab) => projectView(id, tab));
 function projectView(id, tab) {
@@ -698,7 +698,7 @@ function projectView(id, tab) {
     <div class="tabs">${PTABS.map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? 'active' : ''}">${t}</button>`).join('')}</div><div id="tabBody"></div>`;
   view(head);
   $$('.tabs button').forEach(b => b.onclick = () => { location.hash = `#/rab/${id}/${b.dataset.tab}`; });
-  const fn = { item: tabItems, rekap: tabRekap, material: tabMaterial, penawaran: tabPenawaran, revisi: tabRevisi, info: tabInfo }[tab] || tabItems;
+  const fn = { item: tabItems, rekap: tabRekap, material: tabMaterial, tenaga: tabTenaga, penawaran: tabPenawaran, revisi: tabRevisi, info: tabInfo }[tab] || tabItems;
   fn(p, rk, $('#tabBody'));
 }
 
@@ -1063,7 +1063,7 @@ function tabMaterial(p, rk, el) {
   const draw = () => {
     const l = list.filter(x => x.jenis === f), tot = l.reduce((a, b) => a + b.jumlah, 0);
     $('#mt', el).innerHTML = l.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Kode</th><th>${f === 'UPAH' ? 'Tenaga' : f === 'ALAT' ? 'Alat' : 'Bahan'}</th><th class="num">Kebutuhan</th><th>Sat</th><th class="num">Harga dasar</th><th class="num">Jumlah</th></tr></thead><tbody>${l.map(x => `<tr><td>${esc(x.kode)}</td><td>${esc(x.nama)}</td><td class="num">${Nmax(x.qty, 3)}</td><td>${esc(x.satuan)}</td><td class="num">${rpCell(x.harga)}</td><td class="num">${rpCell(x.jumlah)}</td></tr>`).join('')}<tr class="tot"><td colspan="5">Total ${f.toLowerCase()} (sebelum overhead)</td><td class="num">${rpCell(tot)}</td></tr></tbody></table></div>
-      ${f === 'UPAH' ? '<div class="small muted" style="margin-top:6px">Kebutuhan tenaga dalam OH (orang-hari). Jumlah tukang & durasi dihitung di Tahap 2.</div>' : ''}` : '<div class="card empty"><p>Belum ada kebutuhan dari item ber-AHSP.</p></div>';
+      ${f === 'UPAH' ? `<div class="small muted" style="margin-top:6px">Kebutuhan tenaga dalam OH (orang-hari). Jumlah tukang & durasi ada di tab <a href="#/rab/${p.ID}/tenaga">Tenaga</a>.</div>` : ''}` : '<div class="card empty"><p>Belum ada kebutuhan dari item ber-AHSP.</p></div>';
   };
   el.innerHTML = `<div class="row" style="margin-bottom:12px"><div class="seg" id="mSeg"><button data-f="BAHAN" class="active">Bahan</button><button data-f="UPAH">Tenaga (OH)</button><button data-f="ALAT">Alat</button></div><span class="spacer"></span><button class="btn" id="mX">Excel</button></div><div id="mt"></div>
     <div class="small muted" style="margin-top:8px">Item harga pasar/LS tidak masuk daftar kebutuhan karena tidak punya rincian komponen.</div>`;
@@ -1624,6 +1624,8 @@ function mSetting(el) {
       ${inp('KONTINJENSI_PCT', 'Biaya tak terduga (%)', s.KONTINJENSI_PCT, { numType: 'num' })}${sel('PEMBULATAN', 'Pembulatan total', s.PEMBULATAN, [['1', 'Tanpa'], ['1000', 'Ribuan'], ['10000', 'Puluh ribuan'], ['100000', 'Ratus ribuan']])}
       ${inp('WILAYAH_DEFAULT', 'Wilayah default', s.WILAYAH_DEFAULT, { list: 'wl3' })}${sel('MODE_DEFAULT', 'Mode default', s.MODE_DEFAULT, [['RUMAH', 'Mode Rumah'], ['GEDUNG', 'Mode Gedung']])}
       ${inp('AMBANG_DEVIASI_HSP', 'Ambang deviasi HSP custom (±%)', s.AMBANG_DEVIASI_HSP, { numType: 'num' })}${inp('MASA_BERLAKU_HARI', 'Masa berlaku penawaran (hari)', s.MASA_BERLAKU_HARI, { numType: 'num' })}
+      ${inp('JAM_KERJA_HARI', 'Jam kerja per hari', s.JAM_KERJA_HARI, { numType: 'num', hint: '1 OH = 8 jam' })}${inp('HARI_KERJA_MINGGU', 'Hari kerja per minggu', s.HARI_KERJA_MINGGU, { numType: 'num' })}
+      ${inp('RASIO_KEPALA_TUKANG', 'Maks. tukang per kepala tukang', s.RASIO_KEPALA_TUKANG, { numType: 'num' })}${inp('RASIO_MANDOR_PEKERJA', 'Maks. pekerja+tukang per mandor', s.RASIO_MANDOR_PEKERJA, { numType: 'num' })}
       ${inp('FORMAT_NOMOR_PENAWARAN', 'Format nomor penawaran', s.FORMAT_NOMOR_PENAWARAN, { cls: 'span2', hint: '{NO} {BLN} {THN} {KODE}' })}
       ${inp('TERMIN_DEFAULT', 'Skema termin default', s.TERMIN_DEFAULT, { cls: 'span2' })}
       <label class="check span2"><input type="checkbox" name="TAMPIL_CREDIT" ${norm(s.TAMPIL_CREDIT) === 'YA' ? 'checked' : ''}> Tampilkan "dibuat dengan RAB Rumah & Gedung by DG" kecil di dokumen</label>
@@ -2138,6 +2140,240 @@ async function exportRabXlsx(p) {
   [...new Set(Object.values(rk.computed).filter(c => c.analisa && c.analisa.ok).map(c => c.analisa.kode))].forEach(k => { const a = Calc.analyze(idx(), k, rk.ctx); a.rows.forEach(r => an.push([k, a.header.URAIAN, r.jenis, r.kodeHsd, r.nama, r.satuan, r.koef, r.hargaDasar, Math.round(r.jumlah)])); an.push([k, 'HSP (E+F)', '', '', '', '', '', '', a.HSP]); });
   X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(an), 'Analisa');
   X.writeFile(wb, `${p.KODE}_RAB_${todayStr().replace(/-/g, '')}.xlsx`);
+}
+/* ============================================================
+ * Tahap 2 — Tenaga kerja: OH, durasi ↔ jumlah tukang, rekap,
+ * histogram, perbandingan borongan, termin upah
+ * ============================================================ */
+const ROLE_LABEL = { MANDOR: 'Mandor', KEPALA: 'Kepala tukang', TUKANG: 'Tukang', PEKERJA: 'Pekerja', LAIN: 'Lainnya' };
+const TWARN = { DURASI_KOSONG: ['Durasi belum diisi', 'warning'], RASIO_KEPALA: ['Kepala tukang kurang', 'warning'], RASIO_MANDOR: ['Mandor kurang', 'warning'] };
+const tenagaOpt = () => ({ jamKerja: num(setting('JAM_KERJA_HARI')) || 8, hariMinggu: num(setting('HARI_KERJA_MINGGU')) || 6, rasioKepala: num(setting('RASIO_KEPALA_TUKANG')) || 10, rasioMandor: num(setting('RASIO_MANDOR_PEKERJA')) || 20 });
+const jadwalRows = pid => rows('JADWAL').filter(r => r.PROYEK_ID === pid);
+function tenagaPlan(pid) {
+  const plan = {};
+  jadwalRows(pid).forEach(r => { plan[r.ITEM_ID] = { durasi: num(r.DURASI), tukang: num(r.JUMLAH_TUKANG), rowId: r.ID }; });
+  return plan;
+}
+function tenagaOf(p, rk) { return Calc.tenaga(idx(), rk || rekapOf(p), tenagaPlan(p.ID), tenagaOpt()); }
+const borRows = pid => rows('BORONGAN_UPAH').filter(r => r.PROYEK_ID === pid);
+const terminRows = pid => rows('TERMIN_UPAH').filter(r => r.PROYEK_ID === pid).sort((a, b) => num(a.URUTAN) - num(b.URUTAN));
+function borongan(p, rk) {
+  const B = borRows(p.ID), get = m => B.find(r => norm(r.MODE) === m) || {};
+  const m2 = get('M2'), ht = get('HARIAN_TUKANG'), hp = get('HARIAN_PEKERJA');
+  const totM2 = num(m2.HARGA) * num(p.LUAS_BANGUNAN);
+  let totItem = 0, nItem = 0, ahspItem = 0;
+  B.filter(r => norm(r.MODE) === 'ITEM' && num(r.HARGA) > 0).forEach(r => {
+    const it = getRow('RAB_ITEM', r.ITEM_ID); if (!it || Calc.isDel(it)) return;
+    totItem += num(r.HARGA) * num(it.VOLUME); nItem++;
+    const c = rk.computed[it.ID]; if (c) ahspItem += c.upah;
+  });
+  const totHarian = num(ht.JUMLAH_TUKANG) * num(ht.HARI) * num(ht.HARGA) + num(hp.JUMLAH_TUKANG) * num(hp.HARI) * num(hp.HARGA);
+  return { m2, ht, hp, totM2, totItem, nItem, ahspItem, totHarian };
+}
+
+/* Simpan rekap tenaga ke sheet TENAGA_REKAP (agar terlihat di Google Sheet) */
+function syncTenagaRekap(p, t) {
+  const want = {};
+  t.roles.forEach(r => { want[p.ID + '|' + norm(r.kode)] = { ID: p.ID + '|' + norm(r.kode), PROYEK_ID: p.ID, JENIS_TENAGA: r.nama, TOTAL_OH: Calc.round(r.oh, 3), UPAH_HARIAN: r.harga, TOTAL_UPAH: Math.round(r.upah), ORANG_PUNCAK: r.puncak }; });
+  let changed = false;
+  rows('TENAGA_REKAP').filter(r => r.PROYEK_ID === p.ID).forEach(r => { if (!want[r.ID]) { save('TENAGA_REKAP', { ID: r.ID, DELETED: 'YA' }, { silent: true }); changed = true; } });
+  Object.values(want).forEach(w => { const cur = getRow('TENAGA_REKAP', w.ID); if (!cur || diff(cur, w)) { save('TENAGA_REKAP', w, { silent: true }); changed = true; } });
+  if (changed) scheduleSync();
+}
+
+function tabTenaga(p, rk, el) {
+  const t = tenagaOf(p, rk);
+  syncTenagaRekap(p, t);
+  const o = tenagaOpt();
+  const roleCol = t.roles;
+  const bor = borongan(p, rk);
+  const ahspUpah = t.totalUpah;
+  const maxW = Math.max(1, ...t.weeks.map(w => w.orang));
+  const divWithOh = t.divisi.filter(d => d.ohTotal);
+  const anyDur = divWithOh.some(d => d.durasi);
+  el.innerHTML = `
+    ${!roleCol.length ? `<div class="notice warning" style="margin-bottom:12px">${ICON.warn}<div>Belum ada kebutuhan tenaga. Tenaga dihitung dari koefisien upah AHSP × volume — pastikan item sudah terhubung AHSP dan volumenya terisi.</div></div>` : ''}
+    <div class="grid k4">
+      <div class="card kpi primary"><div class="label">Total upah (AHSP)</div><div class="value">${rp(ahspUpah)}</div><div class="hint">sebelum biaya umum & keuntungan</div></div>
+      <div class="card kpi"><div class="label">Total kebutuhan</div><div class="value">${N(t.totalOH, 1)} OH</div><div class="hint">orang-hari (1 OH = 8 jam)</div></div>
+      <div class="card kpi"><div class="label">Durasi total</div><div class="value">${t.totalDurasi ? N(t.totalDurasi) + ' hari' : '-'}</div><div class="hint">${t.totalDurasi ? `± ${N(t.minggu)} minggu · ${o.hariMinggu} hari/minggu` : 'isi durasi per divisi'}</div></div>
+      <div class="card kpi"><div class="label">Orang puncak</div><div class="value">${anyDur ? N(Math.max(0, ...t.weeks.map(w => w.orang))) + ' orang' : '-'}</div><div class="hint">jam kerja ${o.jamKerja} jam/hari</div></div>
+    </div>
+
+    <div class="card" style="margin-top:12px"><div class="row between"><h3>Durasi & jumlah tukang per divisi</h3><span class="small muted">Isi <strong>durasi</strong> (hari kerja) atau <strong>tukang tersedia</strong> — yang lain dihitung otomatis</span></div>
+      ${divWithOh.length ? `<div class="table-wrap"><table class="t" id="tnTbl"><thead><tr><th>Divisi</th><th class="num">OH</th><th class="num">Durasi (hari)</th><th class="num">Tukang tersedia</th>${roleCol.map(r => `<th class="num" title="${esc(r.kode)}">${esc(r.nama)}</th>`).join('')}<th>Status</th></tr></thead><tbody>
+        ${divWithOh.map(d => `<tr data-div="${d.id}"><td>${esc(d.kode)} ${esc(d.uraian)}<div class="small muted">${d.items.length} item</div></td><td class="num">${N(d.ohTotal, 1)}</td>
+          <td class="num"><input class="input num" data-f="durasi" inputmode="numeric" value="${d.mode === 'TUKANG' ? '' : (d.durasi || '')}" placeholder="${d.mode === 'TUKANG' ? N(d.durasi) : 'hari'}" style="width:80px" ${d.mode === 'TUKANG' ? 'title="Dihitung dari jumlah tukang"' : ''}></td>
+          <td class="num"><input class="input num" data-f="tukang" inputmode="numeric" value="${num((tenagaPlan(p.ID)[d.id] || {}).tukang) || ''}" placeholder="${d.ohTukang ? 'orang' : '–'}" ${d.ohTukang ? '' : 'disabled'} style="width:80px"></td>
+          ${roleCol.map(r => { const k = norm(r.kode); return `<td class="num">${d.oh[k] ? `<strong>${d.durasi ? N(d.orang[k]) : '-'}</strong><div class="small muted">${N(d.oh[k], 1)} OH</div>` : '<span class="muted">·</span>'}</td>`; }).join('')}
+          <td>${d.warn.map(w => badge(TWARN[w][0], TWARN[w][1])).join(' ') || (d.durasi ? badge('OK', 'success') : '')}${d.mode === 'TUKANG' ? `<div class="small muted">durasi ${N(d.durasi)} hari dari jumlah tukang</div>` : ''}</td></tr>`).join('')}
+        <tr class="tot"><td>Total</td><td class="num">${N(t.totalOH, 1)}</td><td class="num">${N(t.totalDurasi)}</td><td></td>${roleCol.map(r => `<td class="num">${N(r.oh, 1)} OH</td>`).join('')}<td></td></tr></tbody></table></div>
+        <div class="small muted" style="margin-top:6px">Jumlah orang = OH ÷ durasi, dibulatkan ke atas${o.jamKerja !== 8 ? ` (dikoreksi jam kerja ${o.jamKerja} jam/hari)` : ''}. Peringatan rasio: 1 kepala tukang ≤ ${o.rasioKepala} tukang, 1 mandor ≤ ${o.rasioMandor} pekerja+tukang. Ubah di Master → Pengaturan.</div>` : '<div class="muted">Belum ada divisi dengan kebutuhan tenaga.</div>'}</div>
+
+    <div class="grid md2" style="margin-top:12px">
+      <div class="card"><h3>Rekap per jenis tenaga</h3>${roleCol.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Jenis tenaga</th><th class="num">Total OH</th><th class="num">Upah/hari</th><th class="num">Total upah</th><th class="num">Puncak</th></tr></thead><tbody>
+        ${roleCol.map(r => `<tr><td>${esc(r.nama)}<div class="small muted">${esc(r.kode)} · ${ROLE_LABEL[r.kelas]}</div></td><td class="num">${N(r.oh, 2)}</td><td class="num">${rpCell(r.harga)}</td><td class="num">${rpCell(r.upah)}</td><td class="num">${anyDur ? N(r.puncak) + ' org' : '-'}</td></tr>`).join('')}
+        <tr class="tot"><td>Total</td><td class="num">${N(t.totalOH, 2)}</td><td></td><td class="num">${rpCell(ahspUpah)}</td><td></td></tr></tbody></table></div>` : '<div class="muted small">-</div>'}
+        <div class="row" style="margin-top:10px"><button class="btn sm" id="tnX">Excel</button><button class="btn sm" id="tnP">${ICON.pdf} PDF rekap tenaga</button></div></div>
+      <div class="card"><h3>Histogram tenaga per minggu</h3>${t.weeks.length ? `<div style="display:flex;align-items:flex-end;gap:4px;height:160px;padding-top:8px;overflow-x:auto">${t.weeks.map(w => `<div style="flex:1;min-width:22px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="Minggu ${w.minggu}: ${w.orang} orang · ${N(w.oh, 1)} OH · ${esc(Object.keys(w.divisi).join(', '))}"><span class="small num" style="font-size:10px">${w.orang}</span><div style="width:100%;background:var(--primary);border-radius:4px 4px 0 0;height:${Math.max(2, w.orang / maxW * 120)}px"></div><span class="small muted" style="font-size:10px">M${w.minggu}</span></div>`).join('')}</div>
+        <div class="small muted" style="margin-top:6px">Perkiraan: divisi dikerjakan berurutan sesuai urutan RAB. Di Tahap 3 histogram mengikuti jadwal (pekerjaan paralel & ketergantungan).</div>` : '<div class="muted small">Isi durasi per divisi untuk melihat histogram.</div>'}</div>
+    </div>
+
+    <div class="card" style="margin-top:12px"><h3>Perbandingan upah: AHSP vs borongan vs harian</h3>
+      <div class="form-grid c3" id="borF">
+        ${inp('M2_HARGA', 'Borongan upah per m² bangunan', bor.m2.HARGA, { numType: 'rp', hint: `× ${N(p.LUAS_BANGUNAN, 2)} m² = ${rp(bor.totM2)}` })}
+        <div class="field"><label>Harian — tukang</label><div class="row" style="flex-wrap:nowrap"><input class="input num" name="HT_N" inputmode="numeric" value="${esc(bor.ht.JUMLAH_TUKANG || '')}" placeholder="org" style="width:70px"><input class="input num" name="HT_HARI" inputmode="numeric" value="${esc(bor.ht.HARI || '')}" placeholder="hari" style="width:70px"><input class="input num" name="HT_UPAH" data-num="rp" inputmode="decimal" value="${num(bor.ht.HARGA) ? N(bor.ht.HARGA) : ''}" placeholder="upah/hari"></div></div>
+        <div class="field"><label>Harian — pekerja</label><div class="row" style="flex-wrap:nowrap"><input class="input num" name="HP_N" inputmode="numeric" value="${esc(bor.hp.JUMLAH_TUKANG || '')}" placeholder="org" style="width:70px"><input class="input num" name="HP_HARI" inputmode="numeric" value="${esc(bor.hp.HARI || '')}" placeholder="hari" style="width:70px"><input class="input num" name="HP_UPAH" data-num="rp" inputmode="decimal" value="${num(bor.hp.HARGA) ? N(bor.hp.HARGA) : ''}" placeholder="upah/hari"></div></div>
+      </div>
+      <div class="row" style="margin-top:8px"><button class="btn sm" id="borItem">Borongan per item (${bor.nItem})</button>${t.totalDurasi ? `<button class="btn sm ghost" id="borFill">Isi harian dari hasil hitung</button>` : ''}<span class="spacer"></span><button class="btn sm primary" id="borSave">Simpan & bandingkan</button></div>
+      <div class="table-wrap" style="margin-top:12px"><table class="t"><thead><tr><th>Metode</th><th class="num">Total upah</th><th class="num">Selisih vs AHSP</th></tr></thead><tbody>
+        <tr><td><strong>AHSP</strong> (koefisien × upah dasar)</td><td class="num">${rpCell(ahspUpah)}</td><td class="num">-</td></tr>
+        ${[['Borongan per m²', bor.totM2, ahspUpah], ['Borongan per item' + (bor.nItem ? ` (${bor.nItem} item)` : ''), bor.totItem, bor.ahspItem], ['Harian', bor.totHarian, ahspUpah]].map(([l, v, base]) => `<tr><td>${l}${l.startsWith('Borongan per item') && bor.nItem ? `<div class="small muted">dibanding upah AHSP item yang sama ${rp(base)}</div>` : ''}</td><td class="num">${v ? rpCell(v) : '<span class="muted">-</span>'}</td><td class="num">${v && base ? `<span class="${v - base < 0 ? 'neg' : ''}">${rp(v - base)} (${pct((v - base) / base * 100, 1)})</span>` : '-'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="small muted" style="margin-top:6px">Koefisien tenaga AHSP biasanya lebih besar dari praktik borongan rumah tinggal. Untuk proyek pemerintah tetap gunakan AHSP.</div></div>
+
+    <div class="card" style="margin-top:12px"><div class="row between"><h3>Termin pembayaran upah</h3><div class="row"><button class="btn sm" id="tmGen">Buat termin</button></div></div>
+      ${terminTable(p)}</div>`;
+
+  // simpan durasi/tukang per divisi
+  const tbl = $('#tnTbl', el);
+  tbl && tbl.addEventListener('change', e => {
+    const tr = e.target.closest('tr[data-div]'); if (!tr) return;
+    const did = tr.dataset.div, plan = tenagaPlan(p.ID)[did] || {};
+    const f = e.target.dataset.f, v = parseNum(e.target.value);
+    const patch = { ID: plan.rowId || uid('J'), PROYEK_ID: p.ID, ITEM_ID: did };
+    if (f === 'durasi') { patch.DURASI = v === '' ? '' : Math.max(0, Math.round(v)); patch.JUMLAH_TUKANG = ''; }
+    else { patch.JUMLAH_TUKANG = v === '' ? '' : Math.max(0, Math.round(v)); if (v !== '') patch.DURASI = ''; }
+    save('JADWAL', patch);
+    setTimeout(() => rerenderSoft(), 0);
+  });
+  bindMoneyInputs(el);
+  $('#borSave', el).onclick = () => {
+    const d = formData($('#borF', el));
+    const g = m => borRows(p.ID).find(r => norm(r.MODE) === m);
+    const put = (m, patch) => save('BORONGAN_UPAH', Object.assign({ ID: (g(m) || {}).ID || uid('B'), PROYEK_ID: p.ID, MODE: m }, patch), { silent: true });
+    put('M2', { SATUAN: 'm2', HARGA: d.M2_HARGA, TOTAL: Math.round(num(d.M2_HARGA) * num(p.LUAS_BANGUNAN)) });
+    const n = x => parseNum(x);
+    put('HARIAN_TUKANG', { JUMLAH_TUKANG: n(d.HT_N), HARI: n(d.HT_HARI), HARGA: parseNum(d.HT_UPAH, true), TOTAL: Math.round(num(n(d.HT_N)) * num(n(d.HT_HARI)) * num(parseNum(d.HT_UPAH, true))) });
+    put('HARIAN_PEKERJA', { JUMLAH_TUKANG: n(d.HP_N), HARI: n(d.HP_HARI), HARGA: parseNum(d.HP_UPAH, true), TOTAL: Math.round(num(n(d.HP_N)) * num(n(d.HP_HARI)) * num(parseNum(d.HP_UPAH, true))) });
+    scheduleSync(); toast('Perbandingan disimpan', 'ok'); rerenderSoft();
+  };
+  $('#borFill', el) && ($('#borFill', el).onclick = () => {
+    const tk = t.roles.filter(r => r.kelas === 'TUKANG' || r.kelas === 'KEPALA'), pk = t.roles.filter(r => r.kelas === 'PEKERJA' || r.kelas === 'MANDOR' || r.kelas === 'LAIN');
+    const avg = (list, f) => { const oh = list.reduce((a, r) => a + r.oh, 0); return oh ? list.reduce((a, r) => a + f(r), 0) / oh : 0; };
+    const days = t.totalDurasi;
+    const nT = days ? Math.ceil(tk.reduce((a, r) => a + r.oh, 0) * t.faktorJam / days) : 0, nP = days ? Math.ceil(pk.reduce((a, r) => a + r.oh, 0) * t.faktorJam / days) : 0;
+    $('[name=HT_N]', el).value = nT; $('[name=HT_HARI]', el).value = days; $('[name=HT_UPAH]', el).value = N(Math.round(avg(tk, r => r.upah)));
+    $('[name=HP_N]', el).value = nP; $('[name=HP_HARI]', el).value = days; $('[name=HP_UPAH]', el).value = N(Math.round(avg(pk, r => r.upah)));
+    toast('Terisi dari hasil hitung (rata-rata orang & upah). Sesuaikan dengan harga lapangan.', '');
+  });
+  $('#borItem', el).onclick = () => boronganItemModal(p, rk);
+  $('#tmGen', el).onclick = () => terminModal(p, rk, t, bor);
+  $('#tnX', el).onclick = () => exportTenagaXlsx(p, rk, t, bor);
+  $('#tnP', el).onclick = () => exportTenagaPdf(p, rk, t, bor).catch(e => toast('Gagal membuat PDF: ' + e.message, 'err'));
+  $$('[data-tmst]', el).forEach(b => b.onchange = () => { save('TERMIN_UPAH', { ID: b.dataset.tmst, STATUS: b.value }); });
+}
+function terminTable(p) {
+  const L = terminRows(p.ID);
+  if (!L.length) return '<div class="muted small">Belum ada termin. Klik "Buat termin" untuk menyusun jadwal pembayaran upah (mingguan atau per termin).</div>';
+  let cum = 0;
+  return `<div class="table-wrap"><table class="t"><thead><tr><th>#</th><th>Termin</th><th class="num">%</th><th class="num">Nominal</th><th class="num">Kumulatif</th><th>Status</th></tr></thead><tbody>${L.map(r => { cum += num(r.NOMINAL); return `<tr><td>${num(r.URUTAN)}</td><td>${esc(r.LABEL)}${r.MINGGU_KE ? `<div class="small muted">minggu ke-${num(r.MINGGU_KE)}</div>` : ''}</td><td class="num">${pct(r.PERSEN, 1)}</td><td class="num">${rpCell(r.NOMINAL)}</td><td class="num">${rpCell(cum)}</td><td><select class="input" data-tmst="${r.ID}" style="width:130px"><option ${norm(r.STATUS) !== 'DISETUJUI' ? 'selected' : ''}>DRAFT</option><option ${norm(r.STATUS) === 'DISETUJUI' ? 'selected' : ''}>DISETUJUI</option></select></td></tr>`; }).join('')}
+    <tr class="tot"><td colspan="3">Total (${esc(L[0].BASIS)})</td><td class="num">${rpCell(cum)}</td><td colspan="2"></td></tr></tbody></table></div>
+    <div class="small muted" style="margin-top:6px">Status pembayaran aktual (dibayar/belum) dicatat di modul realisasi Tahap 4.</div>`;
+}
+function boronganItemModal(p, rk) {
+  const items = []; rk.groups.forEach(g => g.items.forEach(it => { if (num(it.VOLUME) > 0) items.push({ it, g, c: rk.computed[it.ID] }); }));
+  const B = borRows(p.ID).filter(r => norm(r.MODE) === 'ITEM');
+  openModal({
+    title: 'Borongan upah per item', wide: true,
+    body: `<div class="small muted" style="margin-bottom:8px">Isi harga borongan upah per satuan (tanpa bahan) untuk item yang diborongkan. Kosongkan yang tidak diborongkan.</div>
+      <div class="table-wrap"><table class="t"><thead><tr><th>Item</th><th class="num">Volume</th><th class="num">Upah AHSP/sat</th><th class="num">Borongan/sat</th></tr></thead><tbody>${items.map(({ it, c }) => {
+        const r = B.find(x => x.ITEM_ID === it.ID) || {};
+        const v = num(it.VOLUME);
+        return `<tr data-it="${it.ID}" data-bid="${r.ID || ''}"><td>${esc(it.KODE || '')} ${esc(it.URAIAN)}</td><td class="num">${Nmax(v, 2)} ${esc(it.SATUAN)}</td><td class="num">${c && v ? rpCell(c.upah / v) : '-'}</td><td class="num"><input class="input num" data-num="rp" inputmode="decimal" value="${num(r.HARGA) ? N(r.HARGA) : ''}" style="width:120px"></td></tr>`;
+      }).join('')}</tbody></table></div>`,
+    foot: `<button class="btn" data-close>Batal</button><button class="btn primary" id="biOk">Simpan</button>`,
+    onOpen: (el, m) => {
+      bindMoneyInputs(el);
+      $('#biOk', el).onclick = () => {
+        $$('tr[data-it]', el).forEach(tr => {
+          const h = parseNum($('input', tr).value, true), bid = tr.dataset.bid, it = getRow('RAB_ITEM', tr.dataset.it);
+          if (h === '' || !(num(h) > 0)) { if (bid) save('BORONGAN_UPAH', { ID: bid, DELETED: 'YA' }, { silent: true }); return; }
+          save('BORONGAN_UPAH', { ID: bid || uid('B'), PROYEK_ID: p.ID, MODE: 'ITEM', ITEM_ID: it.ID, SATUAN: it.SATUAN, HARGA: h, TOTAL: Math.round(h * num(it.VOLUME)), CATATAN: it.URAIAN }, { silent: true });
+        });
+        scheduleSync(); m.close(); rerenderSoft();
+      };
+    }
+  });
+}
+function terminModal(p, rk, t, bor) {
+  const bases = [['AHSP', 'Upah AHSP', t.totalUpah], ['M2', 'Borongan per m²', bor.totM2], ['ITEM', 'Borongan per item', bor.totItem], ['HARIAN', 'Harian', bor.totHarian]].filter(b => b[2] > 0);
+  if (!bases.length) return toast('Belum ada total upah. Lengkapi AHSP/volume atau isi borongan dulu.', 'err');
+  openModal({
+    title: 'Buat termin pembayaran upah',
+    body: `<form class="form-grid" id="tmF">${sel('BASIS', 'Dasar nilai upah', bases[0][0], bases.map(b => [b[0], `${b[1]} — ${rp(b[2])}`]))}
+      ${sel('MODE', 'Pola termin', t.weeks.length ? 'MINGGUAN' : 'MANUAL', [['MINGGUAN', 'Mingguan — mengikuti bobot OH per minggu' + (t.weeks.length ? '' : ' (isi durasi dulu)')], ['MANUAL', 'Termin manual (%)']])}
+      ${txt('MANUAL', 'Termin manual: satu baris = "Label; persen"', 'Termin 1 — pondasi & struktur; 30\nTermin 2 — dinding & atap; 30\nTermin 3 — finishing; 30\nTermin 4 — serah terima; 10', { rows: 5, hint: 'Total persen harus 100' })}
+      ${inp('BULAT', 'Pembulatan per termin', 1000, { numType: 'num', hint: 'selisih pembulatan masuk ke termin terakhir' })}</form>
+      ${terminRows(p.ID).length ? '<div class="notice warning" style="margin-top:10px">Termin lama proyek ini akan diganti.</div>' : ''}`,
+    foot: `<button class="btn" data-close>Batal</button><button class="btn primary" id="tmOk">Buat termin</button>`,
+    onOpen: (el, m) => {
+      $('#tmOk', el).onclick = () => {
+        const d = formData($('#tmF', el));
+        const total = (bases.find(b => b[0] === d.BASIS) || bases[0])[2];
+        const step = num(d.BULAT) || 1;
+        let plan = [];
+        if (d.MODE === 'MINGGUAN') {
+          if (!t.weeks.length) return toast('Isi durasi per divisi dulu', 'err');
+          const sumOh = t.weeks.reduce((a, w) => a + w.oh, 0);
+          plan = t.weeks.map(w => ({ label: `Upah minggu ke-${w.minggu} (${Object.keys(w.divisi).join(', ')})`, persen: sumOh ? w.oh / sumOh * 100 : 0, minggu: w.minggu }));
+        } else {
+          plan = d.MANUAL.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const i = l.lastIndexOf(';'); return { label: i > 0 ? l.slice(0, i).trim() : l, persen: i > 0 ? num(parseNum(l.slice(i + 1))) : 0 }; });
+          const sp = plan.reduce((a, x) => a + x.persen, 0);
+          if (Math.abs(sp - 100) > 0.01) return toast(`Total persen ${N(sp, 2)}% — harus 100%`, 'err');
+        }
+        terminRows(p.ID).forEach(r => save('TERMIN_UPAH', { ID: r.ID, DELETED: 'YA' }, { silent: true }));
+        let acc = 0;
+        plan.forEach((x, i) => {
+          let nom = i === plan.length - 1 ? Math.round(total - acc) : Calc.roundTo(total * x.persen / 100, step, 'dekat');
+          acc += nom;
+          save('TERMIN_UPAH', { ID: uid('TU'), PROYEK_ID: p.ID, URUTAN: i + 1, LABEL: x.label, BASIS: d.BASIS, PERSEN: Calc.round(x.persen, 3), NOMINAL: nom, MINGGU_KE: x.minggu || '', STATUS: 'DRAFT' }, { silent: true });
+        });
+        scheduleSync(); m.close(); toast(`${plan.length} termin dibuat`, 'ok'); rerenderSoft();
+      };
+    }
+  });
+}
+async function exportTenagaXlsx(p, rk, t, bor) {
+  const X = await needXlsx(), wb = X.utils.book_new();
+  const roles = t.roles;
+  const A = [['Divisi', 'OH', 'Durasi (hari)'].concat(roles.map(r => r.nama + ' (org)'))].concat(t.divisi.filter(d => d.ohTotal).map(d => [`${d.kode} ${d.uraian}`, Calc.round(d.ohTotal, 2), d.durasi].concat(roles.map(r => d.orang[norm(r.kode)] || 0))));
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(A), 'Per divisi');
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Jenis tenaga', 'Kode', 'Kelas', 'Total OH', 'Upah/hari', 'Total upah', 'Orang puncak']].concat(roles.map(r => [r.nama, r.kode, ROLE_LABEL[r.kelas], Calc.round(r.oh, 3), r.harga, Math.round(r.upah), r.puncak]))), 'Rekap tenaga');
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Minggu', 'Orang (puncak)', 'OH', 'Divisi']].concat(t.weeks.map(w => [w.minggu, w.orang, Calc.round(w.oh, 2), Object.keys(w.divisi).join(', ')]))), 'Histogram');
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Metode', 'Total upah'], ['AHSP', Math.round(t.totalUpah)], ['Borongan per m²', bor.totM2], ['Borongan per item', bor.totItem], ['Harian', bor.totHarian]]), 'Perbandingan');
+  const tm = terminRows(p.ID);
+  if (tm.length) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['#', 'Termin', 'Basis', '%', 'Nominal', 'Status']].concat(tm.map(r => [num(r.URUTAN), r.LABEL, r.BASIS, num(r.PERSEN), num(r.NOMINAL), r.STATUS]))), 'Termin upah');
+  X.writeFile(wb, `${p.KODE}_TENAGA_${todayStr().replace(/-/g, '')}.xlsx`);
+}
+async function exportTenagaPdf(p, rk, t, bor) {
+  const prof = profilOf(p.PROFIL_ID), ctx = await pdfStart(prof), doc = ctx.doc;
+  let y = pdfKop(ctx);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('REKAP KEBUTUHAN TENAGA KERJA', 105, y + 2, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.text(`${p.NAMA} · ${p.LOKASI || ''} · ${fmtDateLong(todayStr())}`, 105, y + 8, { align: 'center' });
+  const o = tenagaOpt();
+  doc.autoTable(AT({ startY: y + 12, head: [['Jenis tenaga', 'Total OH', 'Upah/hari', 'Total upah', 'Puncak']], body: t.roles.map(r => [r.nama, N(r.oh, 2), rpS(r.harga), rpS(r.upah), r.puncak ? r.puncak + ' org' : '-']).concat([styled(['Total', N(t.totalOH, 2), '', rpS(t.totalUpah), ''], 'TOT')]), columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } }));
+  const roles = t.roles;
+  doc.autoTable(AT({ startY: doc.lastAutoTable.finalY + 6, head: [['Divisi', 'OH', 'Hari'].concat(roles.map(r => r.nama))], body: t.divisi.filter(d => d.ohTotal).map(d => [`${d.kode} ${d.uraian}`, N(d.ohTotal, 1), d.durasi || '-'].concat(roles.map(r => d.orang[norm(r.kode)] || '-'))).concat([styled(['Total', N(t.totalOH, 1), t.totalDurasi].concat(roles.map(() => '')), 'TOT')]), styles: { fontSize: 7.5, cellPadding: 1.5 } }));
+  let yy = doc.lastAutoTable.finalY + 6;
+  doc.setFontSize(8); doc.setTextColor(...hexRgb(THEME.muted));
+  doc.text(doc.splitTextToSize(`Jumlah orang = OH ÷ durasi, dibulatkan ke atas. Jam kerja ${o.jamKerja} jam/hari, ${o.hariMinggu} hari/minggu. Durasi total ${t.totalDurasi} hari kerja (± ${t.minggu} minggu, perkiraan divisi berurutan).`, 180), 15, yy);
+  doc.setTextColor(...hexRgb(THEME.text));
+  doc.autoTable(AT({ startY: yy + 8, head: [['Perbandingan metode upah', 'Total']], body: [['AHSP', rpS(t.totalUpah)], ['Borongan per m²', rpS(bor.totM2)], ['Borongan per item', rpS(bor.totItem)], ['Harian', rpS(bor.totHarian)]], columnStyles: { 1: { halign: 'right', cellWidth: 45 } } }));
+  const tm = terminRows(p.ID);
+  if (tm.length) doc.autoTable(AT({ startY: doc.lastAutoTable.finalY + 6, head: [['#', 'Termin upah', '%', 'Nominal']], body: tm.map(r => [num(r.URUTAN), r.LABEL, pct(r.PERSEN, 1), rpS(r.NOMINAL)]), columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' } } }));
+  pdfFooter(ctx, `Tenaga ${p.KODE}`, norm(setting('TAMPIL_CREDIT')) === 'YA');
+  await deliverPdf(doc, `${p.KODE}_TENAGA_${todayStr().replace(/-/g, '')}.pdf`, { proyekId: p.ID, kategori: '01_RAB', jenis: 'TENAGA', terkait: p.ID, shareText: `Rekap tenaga ${p.NAMA}: ${N(t.totalOH, 1)} OH, ${t.totalDurasi} hari kerja, upah ${rp(t.totalUpah)}` });
 }
 /* ============================================================
  * Start aplikasi

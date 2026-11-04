@@ -410,7 +410,87 @@ var Calc = (function () {
     return { list: list.slice(0, limit || 3), avg: avg };
   }
 
+  /* ---------- Tenaga kerja (Tahap 2) ----------
+   * OH per jenis tenaga = koefisien upah × volume.
+   * plan: { divId: { durasi: hari kerja, tukang: jumlah tukang tersedia } }
+   * opt : { jamKerja: 8, hariMinggu: 6, rasioKepala: 10, rasioMandor: 20 }
+   * 1 OH = 8 jam kerja; bila jam kerja/hari ≠ 8, hari kerja = OH × 8 / jamKerja. */
+  function roleClass(nama) {
+    var n = String(nama || '').toLowerCase();
+    if (/mandor|pengawas/.test(n)) return 'MANDOR';
+    if (/kepala\s*tukang|kep\.?\s*tukang/.test(n)) return 'KEPALA';
+    if (/tukang|operator|montir|instalatir|teknisi|juru|welder|las/.test(n)) return 'TUKANG';
+    if (/pekerja|buruh|kenek|helper|laden/.test(n)) return 'PEKERJA';
+    return 'LAIN';
+  }
+  function tenaga(idx, rk, plan, opt) {
+    plan = plan || {}; opt = opt || {};
+    var jam = num(opt.jamKerja) || 8, hm = num(opt.hariMinggu) || 6;
+    var rK = num(opt.rasioKepala) || 10, rM = num(opt.rasioMandor) || 20;
+    var f = 8 / jam;
+    var roles = {}, divs = [], totalDurasi = 0, totalOH = 0, totalUpah = 0;
+    rk.groups.forEach(function (g) {
+      var d = { id: g.row.ID, kode: g.row.KODE || '', uraian: g.row.URAIAN, oh: {}, upah: 0, ohTotal: 0, ohTukang: 0, items: [], warn: [] };
+      g.items.forEach(function (it) {
+        var c = rk.computed[it.ID];
+        if (!c || !c.analisa || !c.analisa.ok) return;
+        var vol = num(it.VOLUME), ohItem = 0;
+        c.analisa.rows.forEach(function (r) {
+          if (r.jenis !== 'UPAH') return;
+          var oh = r.koef * vol;
+          if (!oh) return;
+          var k = norm(r.kodeHsd);
+          var R = roles[k] || (roles[k] = { kode: r.kodeHsd, nama: r.nama, kelas: roleClass(r.nama), harga: r.hargaDasar, oh: 0, upah: 0, puncak: 0 });
+          R.oh += oh; R.upah += r.jumlah * vol;
+          d.oh[k] = (d.oh[k] || 0) + oh;
+          d.upah += r.jumlah * vol; d.ohTotal += oh; ohItem += oh;
+          if (R.kelas === 'TUKANG') d.ohTukang += oh;
+        });
+        if (ohItem) d.items.push({ id: it.ID, uraian: it.URAIAN, oh: ohItem });
+      });
+      if (!d.ohTotal) { d.durasi = num((plan[d.id] || {}).durasi); d.orang = {}; d.orangTotal = 0; divs.push(d); return; }
+      var p = plan[d.id] || {};
+      var tk = num(p.tukang), du = num(p.durasi);
+      d.mode = tk > 0 ? 'TUKANG' : 'DURASI';
+      if (tk > 0) du = Math.ceil((d.ohTukang || d.ohTotal) * f / tk - 1e-9);
+      d.durasi = du;
+      d.orang = {}; d.orangTotal = 0;
+      var cnt = { MANDOR: 0, KEPALA: 0, TUKANG: 0, PEKERJA: 0, LAIN: 0 };
+      Object.keys(d.oh).forEach(function (k) {
+        var o = du > 0 ? Math.ceil(d.oh[k] * f / du - 1e-9) : 0;
+        if (tk > 0 && roles[k].kelas === 'TUKANG' && d.ohTukang) o = Math.max(1, Math.round(tk * d.oh[k] / d.ohTukang));
+        d.orang[k] = o; d.orangTotal += o; cnt[roles[k].kelas] += o;
+        if (o > roles[k].puncak) roles[k].puncak = o;
+      });
+      d.cnt = cnt;
+      if (!du) d.warn.push('DURASI_KOSONG');
+      if (cnt.KEPALA && cnt.TUKANG / cnt.KEPALA > rK) d.warn.push('RASIO_KEPALA');
+      if (cnt.MANDOR && (cnt.PEKERJA + cnt.TUKANG) / cnt.MANDOR > rM) d.warn.push('RASIO_MANDOR');
+      totalDurasi += du; totalOH += d.ohTotal; totalUpah += d.upah;
+      divs.push(d);
+    });
+    // histogram mingguan (perkiraan: divisi dikerjakan berurutan)
+    var weeks = [], day = 0;
+    divs.forEach(function (d) {
+      if (!d.durasi || !d.ohTotal) return;
+      for (var i = 0; i < d.durasi; i++) {
+        var w = Math.floor((day + i) / hm);
+        var W = weeks[w] || (weeks[w] = { minggu: w + 1, orang: 0, oh: 0, divisi: {} });
+        W.orang = Math.max(W.orang, d.orangTotal);
+        W.oh += d.ohTotal / d.durasi;
+        W.divisi[d.kode || d.uraian] = 1;
+      }
+      day += d.durasi;
+    });
+    for (var w = 0; w < weeks.length; w++) if (!weeks[w]) weeks[w] = { minggu: w + 1, orang: 0, oh: 0, divisi: {} };
+    var list = Object.keys(roles).map(function (k) { return roles[k]; });
+    var order = { MANDOR: 4, KEPALA: 3, TUKANG: 2, PEKERJA: 1, LAIN: 0 };
+    list.sort(function (a, b) { return order[b.kelas] - order[a.kelas] || b.oh - a.oh; });
+    return { roles: list, divisi: divs, totalDurasi: totalDurasi, totalOH: totalOH, totalUpah: totalUpah, weeks: weeks, minggu: Math.ceil(totalDurasi / hm), faktorJam: f };
+  }
+
   return {
+    roleClass: roleClass, tenaga: tenaga,
     num: num, round: round, isDel: isDel, norm: norm, buildIndex: buildIndex, hsdPrice: hsdPrice,
     analyze: analyze, itemCalc: itemCalc, ctxFromProject: ctxFromProject, roundTo: roundTo,
     rekap: rekap, isSmkk: isSmkk, volumeFromDetails: volumeFromDetails, takeoff: takeoff,

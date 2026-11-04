@@ -230,3 +230,24 @@ Pengujian memakai backend tiruan Apps Script dan Chrome headless, bukan Google a
 - service worker offline.
 
 Yang **belum** teruji adalah izin Google, Drive, dan deployment yang sebenarnya, karena itu terjadi di akun kamu. Kalau ada error saat Setup atau Deploy, kirim screenshot pesan errornya.
+
+---
+
+# Tahap 2 — Tenaga Kerja (v1.1.0)
+
+Buka proyek, lalu pilih tab **Tenaga**.
+
+1. **Durasi & jumlah tukang per divisi.** Untuk tiap divisi, isi salah satu:
+   - **Durasi (hari kerja).** Jumlah orang per jenis tenaga dihitung otomatis: OH ÷ durasi, dibulatkan ke atas.
+   - **Tukang tersedia.** Durasi dihitung otomatis dari OH tukang ÷ jumlah tukang, lalu kebutuhan pekerja, kepala tukang, dan mandor ikut menyesuaikan.
+
+   Peringatan muncul kalau rasio tidak wajar. Default-nya 1 kepala tukang untuk maksimal 10 tukang, dan 1 mandor untuk maksimal 20 pekerja + tukang. Ubah di Master → Pengaturan.
+2. **Rekap per jenis tenaga** menampilkan total OH, upah/hari, total upah, dan jumlah orang puncak. Data ini ikut tersimpan di sheet **TENAGA_REKAP**.
+3. **Histogram mingguan** masih perkiraan, dengan asumsi divisi dikerjakan berurutan. Mulai Tahap 3, histogram mengikuti jadwal Gantt.
+4. **Perbandingan upah** antara AHSP, borongan per m², borongan per item, dan harian. Tombol *Isi harian dari hasil hitung* mengisi jumlah orang & upah rata-rata secara otomatis.
+5. **Termin pembayaran upah** bisa dibuat **mingguan** (mengikuti bobot OH per minggu) atau **manual** (persen per termin). Datanya tersimpan di sheet **TERMIN_UPAH**.
+6. **Excel / PDF rekap tenaga.** PDF otomatis tersimpan di folder Drive proyek `01_RAB`.
+
+**Pengaturan baru:** jam kerja/hari (8), hari kerja/minggu (6), dan rasio kepala tukang & mandor. 1 OH = 8 jam. Kalau jam kerja diubah menjadi 10 jam/hari, kebutuhan hari kerja otomatis dikoreksi × 8/10.
+
+**Setelah update dari v1.0.0:** buka Google Sheet, lalu klik menu **RAB Rumah & Gedung → Perbarui Struktur Sheet**. Langkah ini menambah sheet TERMIN_UPAH dan pengaturan baru tanpa mengubah data lama.

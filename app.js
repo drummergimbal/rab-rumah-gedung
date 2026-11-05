@@ -3618,7 +3618,7 @@ function bulkUpsert(t, list) {
     const i = pos.get(row.ID);
     if (i !== undefined && !Calc.isDel(arr[i]) && !diff(arr[i], row)) return;
     const base = i !== undefined ? arr[i].UPDATED_AT : '';
-    const merged = Object.assign({}, i !== undefined ? arr[i] : {}, row, { DELETED: '', UPDATED_AT: now });
+    const merged = Object.assign({}, i !== undefined ? arr[i] : {}, row, { DELETED: row.DELETED || '', UPDATED_AT: now });
     if (i !== undefined) arr[i] = merged; else { pos.set(row.ID, arr.length); arr.push(merged); }
     const key = t + '|' + row.ID, prev = S.queue[key];
     S.queue[key] = { table: t, row: merged, base: prev ? prev.base : base };
@@ -3652,6 +3652,13 @@ async function importResmi() {
   let n = 0;
   n += bulkUpsert('AHSP_HEADER', H); n += bulkUpsert('AHSP_KOMPONEN', K);
   Object.entries(HS).forEach(([t, l]) => { n += bulkUpsert(t, l); });
+  // baris SE47 lama yang tidak ada lagi di data baru → tandai terhapus (tidak hilang permanen di Sheet)
+  const keep = { AHSP_HEADER: H, AHSP_KOMPONEN: K, HSD_UPAH: HS.HSD_UPAH, HSD_BAHAN: HS.HSD_BAHAN, HSD_ALAT: HS.HSD_ALAT };
+  Object.entries(keep).forEach(([t, l]) => {
+    const ids = new Set(l.map(r => r.ID));
+    const gone = rows(t).filter(r => String(r.ID).startsWith('SE47-') && !ids.has(r.ID)).map(r => ({ ID: r.ID, DELETED: 'YA' }));
+    if (gone.length) n += bulkUpsert(t, gone);
+  });
   // wilayah + acuan (wilayah yang sudah ada dipertahankan ID-nya)
   d.wilayah.forEach(w => { const ex = rows('WILAYAH').find(x => norm(x.NAMA) === norm(w.NAMA)); n += bulkUpsert('WILAYAH', [Object.assign({ ID: ex ? ex.ID : 'W-' + w.NAMA.toUpperCase().replace(/[^A-Z]+/g, '-'), AKTIF: 'YA' }, w)]); });
   // catat versi library

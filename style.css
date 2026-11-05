@@ -234,3 +234,36 @@ table.t tr.clickable:hover td { background: var(--primary-50); }
 .logo-prev img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .preview-doc { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 20px; font-size: 12px; }
+
+/* ---------- Gantt ---------- */
+.gantt { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); -webkit-overflow-scrolling: touch; }
+.g-inner { position: relative; }
+.g-row { display: flex; min-height: 40px; border-bottom: 1px solid var(--border); }
+.g-row:nth-child(even) .g-tl { background: var(--zebra); }
+.g-lab { position: sticky; left: 0; z-index: 3; flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--surface); border-right: 1px solid var(--border); cursor: pointer; }
+.g-lab:hover { background: var(--primary-50); }
+.g-t { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-s { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.g-tog { width: 14px; flex: none; color: var(--text-muted); font-size: 12px; }
+.g-tl { position: relative; flex: none; }
+.g-head, .g-head2, .g-msrow { min-height: 26px; }
+.g-head .g-lab, .g-head2 .g-lab, .g-msrow .g-lab { cursor: default; }
+.g-head .g-tl { background: var(--primary) !important; }
+.g-head .g-lab { background: var(--primary); color: #fff; }
+.g-mo { position: absolute; top: 0; bottom: 0; color: #fff; font-size: 11px; font-weight: 600; padding: 5px 4px; border-left: 1px solid rgba(255,255,255,.25); white-space: nowrap; overflow: hidden; }
+.g-dy { position: absolute; top: 0; bottom: 0; font-size: 10px; color: var(--text-muted); text-align: center; padding-top: 6px; border-left: 1px solid var(--border); overflow: hidden; }
+.g-dy.off { color: var(--danger); background: var(--danger-bg); }
+.g-shade { position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 1; }
+.g-off { position: absolute; top: 0; bottom: 0; background: rgba(214, 69, 69, .06); }
+.g-bar { position: absolute; top: 10px; height: 20px; border-radius: 5px; background: var(--primary); color: #fff; font-size: 10px; font-weight: 600; line-height: 20px; padding: 0 6px; white-space: nowrap; overflow: hidden; z-index: 2; }
+.g-bar.crit { background: var(--danger); }
+.g-bar.span { background: var(--accent); color: var(--primary-dark); opacity: .55; }
+.g-bar.item { background: var(--primary-50); border: 1px solid var(--primary); top: 12px; height: 16px; }
+.g-bar.item.inherit { border-style: dashed; opacity: .6; }
+.g-prog { position: absolute; top: 31px; height: 3px; background: var(--success); border-radius: 2px; z-index: 2; }
+.g-item .g-lab { background: var(--zebra); }
+.g-ms { position: absolute; top: 7px; width: 12px; height: 12px; background: var(--accent); transform: rotate(45deg); border-radius: 2px; z-index: 2; }
+.g-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); z-index: 4; pointer-events: none; }
+.g-key { display: inline-block; width: 14px; height: 8px; border-radius: 3px; background: var(--primary); margin: 0 3px 0 8px; vertical-align: middle; }
+.g-key.crit { background: var(--danger); } .g-key.span { background: var(--accent); opacity: .55; } .g-key.acc { background: var(--accent); }
+.g-key.ms { width: 8px; transform: rotate(45deg); background: var(--accent); } .g-key.now { width: 2px; height: 12px; background: var(--accent); }

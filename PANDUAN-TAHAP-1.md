@@ -251,3 +251,30 @@ Buka proyek, lalu pilih tab **Tenaga**.
 **Pengaturan baru:** jam kerja/hari (8), hari kerja/minggu (6), dan rasio kepala tukang & mandor. 1 OH = 8 jam. Kalau jam kerja diubah menjadi 10 jam/hari, kebutuhan hari kerja otomatis dikoreksi × 8/10.
 
 **Setelah update dari v1.0.0:** buka Google Sheet, lalu klik menu **RAB Rumah & Gedung → Perbarui Struktur Sheet**. Langkah ini menambah sheet TERMIN_UPAH dan pengaturan baru tanpa mengubah data lama.
+
+---
+
+# Tahap 3 — Jadwal, Gantt & Kurva S (v1.2.0)
+
+Buka menu bawah **Jadwal**, atau tab **Jadwal** di halaman proyek.
+
+1. **Isi tanggal mulai proyek.**
+2. Klik **Susun urutan otomatis**. Urutan default-nya: Persiapan → Tanah → Pondasi → Struktur → Atap → Dinding. Plumbing & listrik tertanam berjalan paralel mulai pertengahan pekerjaan dinding. Setelah itu Kusen → Plafon → Lantai → Sanitair → MEP → Finishing, dengan pekerjaan luar berjalan paralel. SMKK otomatis berjalan sepanjang proyek.
+3. **Atur durasi tiap divisi** dengan mengetuk namanya di Gantt.
+   - Durasi diambil dari tab Tenaga. Ada juga saran durasi berdasarkan jumlah orang.
+   - Divisi tanpa koefisien tenaga (harga pasar) diisi manual.
+   - Di layar yang sama bisa diatur: *dikerjakan setelah* (FS/SS), lag hari kerja, batas mulai paling cepat, dan jadwal per item (opsional).
+4. **Gantt:**
+   - Zoom harian, mingguan, atau bulanan.
+   - Bar merah = jalur kritis, oranye = SMKK.
+   - Garis oranye tegak = hari ini.
+   - Belah ketupat = milestone. Milestone otomatis: selesai struktur, tutup atap, MEP terpasang, serah terima. Milestone sendiri bisa ditambah di tab Libur & Milestone.
+5. **Input Progres:** pilih minggu, lalu isi **persen kumulatif** per divisi (atau per item). Tambahkan catatan dan foto; foto otomatis dikompres dan disimpan ke Drive `06_Progres`.
+6. **Kurva S:** menampilkan grafik rencana vs aktual, tabel deviasi mingguan (Sesuai / Waspada / Terlambat), dan estimasi selesai berdasarkan SPI = aktual ÷ rencana.
+7. **Laporan:** ringkasan per minggu, pekerjaan terlambat, pekerjaan yang mulai/selesai minggu ini, serta rencana cash flow (ikut termin upah dari Tahap 2). PDF laporan disimpan ke `06_Progres`.
+8. **PDF jadwal** (Gantt + Kurva S, A3 landscape) disimpan ke `03_Jadwal`. Tersedia juga Excel (jadwal, Kurva S, cash flow).
+9. **Libur:** sudah terisi libur nasional & cuti bersama 2026–2027 sesuai SKB 3 Menteri. Hapus cuti bersama kalau tukang tetap bekerja di hari itu.
+
+Dashboard sekarang juga menampilkan progres minggu berjalan dan daftar pekerjaan **"Minggu ini"** (mulai, selesai, dan yang terlambat).
+
+**Setelah update:** jalankan menu **RAB Rumah & Gedung → Perbarui Struktur Sheet**. Langkah ini menambah kolom TANGGAL_MULAI, data libur, dan pengaturan deviasi.

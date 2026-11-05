@@ -1,6 +1,6 @@
 /* ============================================================
  * RAB Rumah & Gedung — Backend Google Apps Script (by DG)
- * Versi 1.1.0 (Tahap 1 + Tahap 2 Tenaga Kerja)
+ * Versi 1.2.0 (Tahap 1–3: RAB, Tenaga Kerja, Jadwal & Kurva S)
  *
  * File di project Apps Script:
  *   Code.gs  → file ini
@@ -10,7 +10,7 @@
  * dan Sheet dibuka ulang. Jalankan "1. Setup Awal" sekali saja.
  * ============================================================ */
 
-var APP = { name: 'RAB Rumah & Gedung', version: '1.1.0', tz: 'Asia/Jakarta' };
+var APP = { name: 'RAB Rumah & Gedung', version: '1.2.0', tz: 'Asia/Jakarta' };
 
 var THEME = {
   primary: '#1F4E79', primaryDark: '#0E2A45', primary50: '#EAF2FA',
@@ -26,7 +26,7 @@ var STATUS_COLORS = {
   'TERVERIFIKASI': 'success', 'OK': 'success', 'DITERIMA': 'success', 'SELESAI': 'success', 'AMAN': 'success', 'SESUAI': 'success', 'DISETUJUI': 'success',
   'PERLU CEK': 'warning', 'PERLU HARGA': 'warning', 'DRAFT': 'warning', 'NEGOSIASI': 'warning', 'WASPADA': 'warning', 'DIAJUKAN': 'warning',
   'DITOLAK': 'danger', 'KEDALUWARSA': 'danger', 'BATAL': 'danger', 'TERLAMBAT': 'danger', 'OVER BUDGET': 'danger',
-  'TERKIRIM': 'info', 'BERJALAN': 'info', 'PENAWARAN': 'info'
+  'TERKIRIM': 'info', 'BERJALAN': 'info', 'PENAWARAN': 'info', 'RENCANA': 'info', 'TERCAPAI': 'success'
 };
 
 /* ---------- Skema sheet ----------
@@ -34,7 +34,7 @@ var STATUS_COLORS = {
  * Kolom ID selalu pertama; UPDATED_AT & DELETED selalu terakhir. */
 var SCHEMA = {
   // Proyek & RAB
-  PROYEK: { group: 'RAB', cols: ['KODE', 'NAMA', 'PEMILIK', 'LOKASI', 'JENIS_BANGUNAN', 'JUMLAH_LANTAI:num', 'LUAS_TANAH:num', 'LUAS_BANGUNAN:num', 'LUAS_PER_LANTAI', 'TAHUN_ANGGARAN:num', 'WILAYAH', 'VERSI_AHSP', 'PROFIL_ID', 'MODE', 'OVERHEAD_PCT:pct', 'PPN_PCT:pct', 'KONTINJENSI_PCT:pct', 'PEMBULATAN:num', 'TOTAL_RAB:rp', 'NILAI_KONTRAK:rp', 'STATUS', 'FOLDER_ID', 'CATATAN'] },
+  PROYEK: { group: 'RAB', cols: ['KODE', 'NAMA', 'PEMILIK', 'LOKASI', 'JENIS_BANGUNAN', 'JUMLAH_LANTAI:num', 'LUAS_TANAH:num', 'LUAS_BANGUNAN:num', 'LUAS_PER_LANTAI', 'TAHUN_ANGGARAN:num', 'WILAYAH', 'VERSI_AHSP', 'PROFIL_ID', 'MODE', 'OVERHEAD_PCT:pct', 'PPN_PCT:pct', 'KONTINJENSI_PCT:pct', 'PEMBULATAN:num', 'TOTAL_RAB:rp', 'NILAI_KONTRAK:rp', 'STATUS', 'FOLDER_ID', 'CATATAN', 'TANGGAL_MULAI:date'] },
   DIVISI: { group: 'RAB', cols: ['KODE', 'NAMA', 'URUTAN:num', 'MODE', 'KETERANGAN'] },
   RAB_ITEM: { group: 'RAB', freezeCols: 6, cols: ['PROYEK_ID', 'PARENT_ID', 'TIPE_BARIS', 'URUTAN:num', 'KODE', 'URAIAN', 'SATUAN', 'VOLUME:num', 'JENIS_HARGA', 'KODE_AHSP', 'HARGA_PASAR:rp', 'SUMBER_HARGA', 'HARGA_SATUAN:rp', 'JUMLAH:rp', 'UPAH:rp', 'BAHAN:rp', 'ALAT:rp', 'BOBOT:pct', 'SPESIFIKASI', 'CATATAN'] },
   VOLUME_DETAIL: { group: 'RAB', cols: ['PROYEK_ID', 'ITEM_ID', 'URUTAN:num', 'KETERANGAN', 'PANJANG:num', 'LEBAR:num', 'TINGGI:num', 'JUMLAH:num', 'PENGURANG', 'HASIL:num'] },
@@ -95,7 +95,9 @@ var DROPDOWN = {
   'CCO.STATUS': ['DIAJUKAN', 'DISETUJUI', 'DITOLAK'],
   'BORONGAN_UPAH.MODE': ['M2', 'ITEM', 'HARIAN_TUKANG', 'HARIAN_PEKERJA'],
   'TERMIN_UPAH.BASIS': ['AHSP', 'M2', 'ITEM', 'HARIAN'],
-  'TERMIN_UPAH.STATUS': ['DRAFT', 'DISETUJUI']
+  'TERMIN_UPAH.STATUS': ['DRAFT', 'DISETUJUI'],
+  'JADWAL.JENIS_RELASI': ['FS', 'SS'],
+  'MILESTONE.STATUS': ['RENCANA', 'TERCAPAI', 'TERLAMBAT']
 };
 
 var FORMAT = {
@@ -121,6 +123,8 @@ var DEFAULT_SETTINGS = [
   ['HARI_KERJA_MINGGU', 6, 'Hari kerja per minggu'],
   ['RASIO_KEPALA_TUKANG', 10, 'Peringatan bila 1 kepala tukang membawahi lebih dari … tukang'],
   ['RASIO_MANDOR_PEKERJA', 20, 'Peringatan bila 1 mandor membawahi lebih dari … pekerja + tukang'],
+  ['DEVIASI_WASPADA', 5, 'Kurva S: status waspada bila aktual tertinggal ≥ … % dari rencana'],
+  ['DEVIASI_KRITIS', 10, 'Kurva S: status kritis bila aktual tertinggal ≥ … % dari rencana'],
   ['ROOT_FOLDER_ID', '', 'Diisi otomatis saat setup'],
   ['MASTER_FOLDER_ID', '', 'Diisi otomatis saat setup'],
   ['PROFIL_FOLDER_ID', '', 'Diisi otomatis saat setup'],
@@ -175,10 +179,12 @@ function setupSheets() {
 /* Dipakai setelah update versi: tambah sheet/kolom/pengaturan baru tanpa menyentuh data */
 function upgradeSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var before = ss.getSheets().map(function (s) { return s.getName(); });
+  var before = {};
+  ss.getSheets().forEach(function (s) { before[s.getName()] = s.getLastColumn(); });
   Object.keys(SCHEMA).forEach(function (name) { ensureSheet_(ss, name); });
   seedSettings_();
-  Object.keys(SCHEMA).forEach(function (name) { if (before.indexOf(name) < 0) applyTheme(name); });
+  seedLibur_();
+  Object.keys(SCHEMA).forEach(function (name) { var sh = sheet_(name); if (!(name in before) || sh.getLastColumn() !== before[name]) applyTheme(name); });
   orderSheets_(ss);
   log_('UPGRADE', '', '', 'Struktur diperbarui ke v' + APP.version, 'SCRIPT');
   try { SpreadsheetApp.getUi().alert('Struktur sheet sudah diperbarui ke v' + APP.version + ' ✅'); } catch (e) {}
@@ -257,6 +263,27 @@ function seedMaster_() {
     appendRows_('TEMPLATE_SYARAT', t.map(function (x, i) { return { ID: 'TS' + (i + 1), JENIS: x[0], JUDUL: x[1], ISI: x[2], URUTAN: x[3] }; }));
   }
   if (!readTable_('AHSP_HEADER').length) seedContoh_();
+  seedLibur_();
+}
+
+/* Libur nasional & cuti bersama (SKB 3 Menteri) 2026–2027. Bisa diedit di sheet LIBUR / aplikasi. */
+var LIBUR_SKB = [
+  ['2026-01-01', 'Tahun Baru 2026 Masehi'], ['2026-01-16', 'Isra Mikraj Nabi Muhammad saw.'], ['2026-02-16', 'Cuti bersama Tahun Baru Imlek'], ['2026-02-17', 'Tahun Baru Imlek 2577 Kongzili'],
+  ['2026-03-18', 'Cuti bersama Nyepi'], ['2026-03-19', 'Hari Suci Nyepi (Tahun Baru Saka 1948)'], ['2026-03-20', 'Cuti bersama Idulfitri'], ['2026-03-21', 'Idulfitri 1447 H'], ['2026-03-22', 'Idulfitri 1447 H'],
+  ['2026-03-23', 'Cuti bersama Idulfitri'], ['2026-03-24', 'Cuti bersama Idulfitri'], ['2026-04-03', 'Wafat Yesus Kristus'], ['2026-04-05', 'Kebangkitan Yesus Kristus (Paskah)'], ['2026-05-01', 'Hari Buruh Internasional'],
+  ['2026-05-14', 'Kenaikan Yesus Kristus'], ['2026-05-15', 'Cuti bersama Kenaikan Yesus Kristus'], ['2026-05-27', 'Iduladha 1447 H'], ['2026-05-28', 'Cuti bersama Iduladha'], ['2026-05-31', 'Hari Raya Waisak 2570 BE'],
+  ['2026-06-01', 'Hari Lahir Pancasila'], ['2026-06-16', '1 Muharam Tahun Baru Islam 1448 H'], ['2026-08-17', 'Proklamasi Kemerdekaan'], ['2026-08-25', 'Maulid Nabi Muhammad saw.'],
+  ['2026-12-24', 'Cuti bersama Natal'], ['2026-12-25', 'Kelahiran Yesus Kristus'],
+  ['2027-01-01', 'Tahun Baru 2027 Masehi'], ['2027-01-05', 'Isra Mikraj Nabi Muhammad saw.'], ['2027-02-05', 'Cuti bersama Tahun Baru Imlek'], ['2027-02-06', 'Tahun Baru Imlek 2578 Kongzili'],
+  ['2027-03-08', 'Hari Suci Nyepi (Tahun Baru Saka 1949)'], ['2027-03-09', 'Cuti bersama Idulfitri'], ['2027-03-10', 'Idulfitri 1448 H'], ['2027-03-11', 'Idulfitri 1448 H'], ['2027-03-12', 'Cuti bersama Idulfitri'],
+  ['2027-03-15', 'Cuti bersama Idulfitri'], ['2027-03-25', 'Cuti bersama Wafat Yesus Kristus'], ['2027-03-26', 'Wafat Yesus Kristus'], ['2027-03-28', 'Kebangkitan Yesus Kristus (Paskah)'], ['2027-05-01', 'Hari Buruh Internasional'],
+  ['2027-05-06', 'Kenaikan Yesus Kristus'], ['2027-05-17', 'Iduladha 1448 H'], ['2027-05-18', 'Cuti bersama Iduladha'], ['2027-05-19', 'Cuti bersama Waisak'], ['2027-05-20', 'Hari Raya Waisak 2571 BE'],
+  ['2027-06-01', 'Hari Lahir Pancasila'], ['2027-06-06', '1 Muharam Tahun Baru Islam 1449 H'], ['2027-08-15', 'Maulid Nabi Muhammad saw.'], ['2027-08-17', 'Proklamasi Kemerdekaan'],
+  ['2027-12-24', 'Cuti bersama Natal'], ['2027-12-25', 'Kelahiran Yesus Kristus'], ['2027-12-26', 'Isra Mikraj Nabi Muhammad saw.']
+];
+function seedLibur_() {
+  if (readTable_('LIBUR').length) return;
+  appendRows_('LIBUR', LIBUR_SKB.map(function (l) { return { ID: 'L' + l[0].replace(/-/g, ''), TANGGAL: l[0], KETERANGAN: l[1] + ' (SKB 3 Menteri)' }; }));
 }
 
 /* Data CONTOH untuk testing saja. BUKAN data resmi. Hapus dari aplikasi:

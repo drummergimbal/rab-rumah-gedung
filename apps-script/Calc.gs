@@ -489,7 +489,91 @@ var Calc = (function () {
     return { roles: list, divisi: divs, totalDurasi: totalDurasi, totalOH: totalOH, totalUpah: totalUpah, weeks: weeks, minggu: Math.ceil(totalDurasi / hm), faktorJam: f };
   }
 
+  /* ---------- Jadwal (Tahap 3) ----------
+   * Tanggal pakai format 'yyyy-mm-dd' dan dihitung di UTC agar tidak geser zona waktu. */
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function parseYmd(s) { var p = String(s || '').slice(0, 10).split('-'); return new Date(Date.UTC(+p[0], (+p[1] || 1) - 1, +p[2] || 1)); }
+  function ymd(d) { return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()); }
+  function addDays(s, n) { var d = parseYmd(s); d.setUTCDate(d.getUTCDate() + n); return ymd(d); }
+  function daysBetween(a, b) { return Math.round((parseYmd(b) - parseYmd(a)) / 864e5); }
+  /* Kalender kerja: daftar tanggal kerja mulai `start`. hariMinggu 7 = semua hari, 6 = Senin–Sabtu, 5 = Senin–Jumat */
+  function calendar(start, hariMinggu, libur, n) {
+    var off = {}, out = [], d = parseYmd(start), hm = num(hariMinggu) || 6, guard = 0;
+    (libur || []).forEach(function (t) { off[String(t).slice(0, 10)] = 1; });
+    while (out.length < (n || 1500) && guard++ < 6000) {
+      var wd = d.getUTCDay(), s = ymd(d);
+      var work = !off[s] && (hm >= 7 || (hm === 6 ? wd !== 0 : wd !== 0 && wd !== 6));
+      if (work) out.push(s);
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return out;
+  }
+  /* tasks: [{id, dur, pred, rel:'FS'|'SS', lag, minStart:'yyyy-mm-dd'|'', span:bool}]
+   * hasil per id: es, ef (indeks hari kerja), ls, lf, float, critical, mulai, selesai */
+  function schedule(tasks, cal) {
+    var res = {}, byId = {}, normal = [], warn = [];
+    tasks.forEach(function (t) { byId[t.id] = t; if (!t.span && num(t.dur) > 0) normal.push(t); });
+    var isN = {}; normal.forEach(function (t) { isN[t.id] = 1; });
+    var idxOf = function (s) { if (!s) return 0; for (var i = 0; i < cal.length; i++) if (cal[i] >= String(s).slice(0, 10)) return i; return cal.length - 1; };
+    // urutan topologis (Kahn); siklus → predecessor diabaikan
+    var indeg = {}, succ = {};
+    normal.forEach(function (t) { indeg[t.id] = 0; succ[t.id] = []; });
+    normal.forEach(function (t) { if (t.pred && isN[t.pred] && t.pred !== t.id) { indeg[t.id]++; succ[t.pred].push(t); } });
+    var q = normal.filter(function (t) { return !indeg[t.id]; }), order = [];
+    while (q.length) { var t0 = q.shift(); order.push(t0); succ[t0.id].forEach(function (s) { if (--indeg[s.id] === 0) q.push(s); }); }
+    var cyc = normal.filter(function (t) { return order.indexOf(t) < 0; });
+    cyc.forEach(function (t) { warn.push({ id: t.id, code: 'SIKLUS' }); order.push(t); if (succ[t.pred]) succ[t.pred] = succ[t.pred].filter(function (x) { return x !== t; }); });
+    order.forEach(function (t) {
+      var dur = Math.round(num(t.dur)), es = t.minStart ? idxOf(t.minStart) : 0;
+      var p = t.pred && isN[t.pred] && cyc.indexOf(t) < 0 ? res[t.pred] : null;
+      if (p) { var lag = Math.round(num(t.lag)); es = Math.max(es, (t.rel === 'SS' ? p.es + lag : p.ef + 1 + lag)); }
+      if (t.pred && !isN[t.pred] && byId[t.pred] && !byId[t.pred].span) warn.push({ id: t.id, code: 'PRED_BELUM_DIJADWALKAN' });
+      es = Math.max(0, es);
+      res[t.id] = { es: es, ef: es + dur - 1, dur: dur };
+    });
+    var end = 0; Object.keys(res).forEach(function (k) { end = Math.max(end, res[k].ef); });
+    // mundur: late start/finish
+    order.slice().reverse().forEach(function (t) {
+      var r = res[t.id], lf = end;
+      succ[t.id].forEach(function (s) {
+        var sr = res[s.id], lag = Math.round(num(s.lag)), ls = sr.ls;
+        lf = Math.min(lf, s.rel === 'SS' ? ls - lag + r.dur - 1 : ls - 1 - lag);
+      });
+      r.lf = lf; r.ls = lf - r.dur + 1; r.float = r.ls - r.es; r.critical = r.float <= 0;
+    });
+    tasks.forEach(function (t) { if (t.span && normal.length) res[t.id] = { es: 0, ef: end, dur: end + 1, ls: 0, lf: end, float: 0, critical: false, span: true }; });
+    Object.keys(res).forEach(function (k) { var r = res[k]; r.mulai = cal[Math.min(r.es, cal.length - 1)]; r.selesai = cal[Math.min(r.ef, cal.length - 1)]; });
+    return { tasks: res, endIdx: end, mulai: normal.length ? cal[0] : '', selesai: normal.length ? cal[Math.min(end, cal.length - 1)] : '', durasiKerja: normal.length ? end + 1 : 0, warn: warn };
+  }
+  /* Kurva S rencana: bobot (0–1) tiap task disebar rata di hari kerjanya → per minggu (7 hari kalender dari tanggal mulai) */
+  function kurvaS(items, sched, start, cal) {
+    var weeks = [], last = 0;
+    items.forEach(function (it) {
+      var r = sched.tasks[it.id]; if (!r || !(it.bobot > 0)) return;
+      var per = it.bobot / Math.max(1, r.ef - r.es + 1);
+      for (var i = r.es; i <= r.ef; i++) {
+        var w = Math.floor(daysBetween(start, cal[i]) / 7);
+        weeks[w] = (weeks[w] || 0) + per; last = Math.max(last, w);
+      }
+    });
+    var out = [], kum = 0;
+    for (var w = 0; w <= last && weeks.length; w++) {
+      kum += weeks[w] || 0;
+      out.push({ minggu: w + 1, mulai: addDays(start, w * 7), selesai: addDays(start, w * 7 + 6), rencana: (weeks[w] || 0) * 100, kum: Math.min(100, kum * 100) });
+    }
+    return out;
+  }
+  /* Persen rencana sebuah task pada akhir minggu ke-w */
+  function planPct(r, w, start, cal) {
+    if (!r || !r.dur) return 0;
+    var endW = addDays(start, w * 7 - 1), done = 0;
+    for (var i = r.es; i <= r.ef; i++) if (cal[i] <= endW) done++;
+    return done / (r.ef - r.es + 1) * 100;
+  }
+  function weekOf(start, date) { return Math.floor(daysBetween(start, date) / 7) + 1; }
+
   return {
+    parseYmd: parseYmd, ymd: ymd, addDays: addDays, daysBetween: daysBetween, calendar: calendar, schedule: schedule, kurvaS: kurvaS, planPct: planPct, weekOf: weekOf,
     roleClass: roleClass, tenaga: tenaga,
     num: num, round: round, isDel: isDel, norm: norm, buildIndex: buildIndex, hsdPrice: hsdPrice,
     analyze: analyze, itemCalc: itemCalc, ctxFromProject: ctxFromProject, roundTo: roundTo,

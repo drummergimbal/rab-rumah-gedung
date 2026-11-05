@@ -1,12 +1,12 @@
 /* ============================================================
- * RAB Rumah & Gedung — PWA (by DG) · v1.1.0 · Tahap 1–2
+ * RAB Rumah & Gedung — PWA (by DG) · v1.2.0 · Tahap 1–3
  * RAB + AHSP/HSD + Master + Import + Profil + Penawaran + PDF ke Drive
  * ============================================================ */
 'use strict';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const TABLES = ['PROYEK', 'DIVISI', 'RAB_ITEM', 'VOLUME_DETAIL', 'REVISI', 'REVISI_ITEM', 'AHSP_HEADER', 'AHSP_KOMPONEN', 'AHSP_VERSI',
   'HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT', 'WILAYAH', 'PENGATURAN', 'PROFIL_USAHA', 'TEMPLATE_SYARAT', 'IMPORT_MAPPING',
-  'PENAWARAN', 'PENAWARAN_ITEM', 'FILES', 'JADWAL', 'TENAGA_REKAP', 'BORONGAN_UPAH', 'TERMIN_UPAH'];
+  'PENAWARAN', 'PENAWARAN_ITEM', 'FILES', 'JADWAL', 'TENAGA_REKAP', 'BORONGAN_UPAH', 'TERMIN_UPAH', 'PROGRES', 'LIBUR', 'MILESTONE'];
 const MASTER_TABLES = ['AHSP_HEADER', 'AHSP_KOMPONEN', 'HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT'];
 const HSD_TABLE = { UPAH: 'HSD_UPAH', BAHAN: 'HSD_BAHAN', ALAT: 'HSD_ALAT' };
 const THEME = {
@@ -18,12 +18,12 @@ const STATUS_CLASS = {
   'TERVERIFIKASI': 'success', 'OK': 'success', 'DITERIMA': 'success', 'SELESAI': 'success', 'RESMI': 'success',
   'PERLU CEK': 'warning', 'PERLU HARGA': 'warning', 'DRAFT': 'warning', 'NEGOSIASI': 'warning',
   'DITOLAK': 'danger', 'KEDALUWARSA': 'danger', 'BATAL': 'danger',
-  'DISETUJUI': 'success', 'TERKIRIM': 'info', 'BERJALAN': 'info', 'PENAWARAN': 'info', 'MODIFIKASI': 'primary', 'CUSTOM': 'accent', 'HARGA PASAR': 'accent'
+  'DISETUJUI': 'success', 'TERCAPAI': 'success', 'SESUAI': 'success', 'LEBIH CEPAT': 'success', 'WASPADA': 'warning', 'TERLAMBAT': 'danger', 'RENCANA': 'info', 'TERKIRIM': 'info', 'BERJALAN': 'info', 'PENAWARAN': 'info', 'MODIFIKASI': 'primary', 'CUSTOM': 'accent', 'HARGA PASAR': 'accent'
 };
 const DEFAULTS = {
   OVERHEAD_PCT: 10, PPN_PCT: 11, KONTINJENSI_PCT: 5, PEMBULATAN: 1000, WILAYAH_DEFAULT: 'Kabupaten Bogor',
   VERSI_AHSP_AKTIF: 'CONTOH', MODE_DEFAULT: 'RUMAH', AMBANG_DEVIASI_HSP: 30, FORMAT_NOMOR_PENAWARAN: '{NO}/PNW/RAB/{BLN}/{THN}',
-  MASA_BERLAKU_HARI: 14, JAM_KERJA_HARI: 8, HARI_KERJA_MINGGU: 6, RASIO_KEPALA_TUKANG: 10, RASIO_MANDOR_PEKERJA: 20, TERMIN_DEFAULT: 'DP 30% – Progres 30% – Progres 30% – Retensi 10%', TAMPIL_CREDIT: 'YA'
+  MASA_BERLAKU_HARI: 14, JAM_KERJA_HARI: 8, HARI_KERJA_MINGGU: 6, RASIO_KEPALA_TUKANG: 10, RASIO_MANDOR_PEKERJA: 20, DEVIASI_WASPADA: 5, DEVIASI_KRITIS: 10, TERMIN_DEFAULT: 'DP 30% – Progres 30% – Progres 30% – Retensi 10%', TAMPIL_CREDIT: 'YA'
 };
 const VENDOR = {
   jspdf: 'vendor/jspdf.umd.min.js', autotable: 'vendor/jspdf.plugin.autotable.min.js', xlsx: 'vendor/xlsx.full.min.js'
@@ -256,7 +256,8 @@ async function sync({ full = false, quiet = true } = {}) {
     S.lastError = ''; S.online = true;
     await saveMeta(); flushTables();
     if (!quiet) toast('Sinkron selesai', 'ok');
-    rerenderSoft();
+    if (!CUR.dirty) rerenderSoft(); // jangan hapus isian yang sedang diketik
+    else CUR.pendingRefresh = true;
   } catch (e) {
     S.lastError = e.message;
     if (!quiet) toast('Sinkron gagal: ' + e.message, 'err');
@@ -538,7 +539,9 @@ function syaratText(jenis) { return rows('TEMPLATE_SYARAT').filter(t => norm(t.J
 const ROUTES = [];
 function route(pattern, fn) { ROUTES.push({ re: new RegExp('^' + pattern.replace(/:\w+/g, '([^/]+)') + '$'), fn }); }
 let CUR = { hash: '' };
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#app')) CUR.dirty = true; });
 function render() {
+  CUR.dirty = false; CUR.pendingRefresh = false;
   const hash = location.hash.replace(/^#/, '') || '/dashboard';
   CUR.hash = hash;
   const nav = hash.split('/')[1];
@@ -576,12 +579,13 @@ route('/dashboard', () => {
       <div class="card kpi primary"><div class="label">Total RAB</div><div class="value">${rp(rk.total)}</div><div class="hint">${rk.ppnPct ? 'termasuk PPN ' + pct(rk.ppnPct, 0) : 'tanpa PPN'}</div></div>
       <div class="card kpi"><div class="label">Harga per m²</div><div class="value">${rk.perM2 ? rp(rk.perM2) : '-'}</div><div class="hint">${rk.luas ? N(rk.luas, 2) + ' m² bangunan' : 'isi luas bangunan'}</div></div>
       ${(() => { const t = tenagaOf(p, rk); return `<a class="card kpi clickable" href="#/rab/${pid}/tenaga" style="text-decoration:none;color:inherit"><div class="label">Tenaga kerja</div><div class="value">${t.totalOH ? N(t.totalOH, 0) + ' OH' : '-'}</div><div class="hint">${t.totalDurasi ? N(t.totalDurasi) + ' hari kerja · puncak ' + N(Math.max(0, ...t.weeks.map(w => w.orang))) + ' org' : 'isi durasi di tab Tenaga'}</div></a>`; })()}
-      <div class="card kpi"><div class="label">Progres</div><div class="value muted">-</div><div class="hint">aktif di tahap 3</div></div>
+      ${(() => { const M = jadwalModel(p); if (!M.scheduled) return `<a class="card kpi clickable" href="#/jadwal/${pid}/gantt" style="text-decoration:none;color:inherit"><div class="label">Progres</div><div class="value muted">-</div><div class="hint">susun jadwal dulu</div></a>`; const w = Math.max(1, Math.min(M.kurva.length, M.lastData || M.weekNow)); const a = M.actualCum(w), pl = M.planAt(w), st = devStatus(a - pl); return `<a class="card kpi clickable" href="#/jadwal/${pid}/kurva" style="text-decoration:none;color:inherit"><div class="label">Progres minggu ${w}</div><div class="value">${M.lastData ? pct(a, 1) : '-'}</div><div class="hint">rencana ${pct(pl, 1)} ${M.lastData ? badge(st[0], st[1]) : ''}</div></a>`; })()}
     </div>
     <div class="grid md2" style="margin-top:12px">
       <div class="card"><h3>Peringatan</h3>${warns.length ? `<div class="list warn-list">${warns.slice(0, 3).map(w => `<div class="li">${ICON.warn}<div class="main"><div class="t1">${esc(w.t)}</div><div class="t2">${esc(w.d)}</div></div>${w.href ? `<a class="btn sm" href="${w.href}">Buka</a>` : ''}</div>`).join('')}</div>${warns.length > 3 ? `<div class="small muted" style="margin-top:6px">+${warns.length - 3} peringatan lain</div>` : ''}` : '<div class="muted">Tidak ada peringatan. 👍</div>'}</div>
       <div class="card"><h3>Bobot per divisi</h3>${rk.groups.filter(g => g.subtotal).length ? rk.groups.filter(g => g.subtotal).map(g => `<div style="margin-bottom:10px"><div class="row between small"><span>${esc(g.row.KODE || '')} ${esc(g.row.URAIAN)}</span><span class="num">${pct(g.bobot)}</span></div><div class="bar ${g.smkk ? 'accent' : ''}"><span style="width:${Math.min(100, g.bobot)}%"></span></div></div>`).join('') : '<div class="muted">Belum ada nilai pekerjaan.</div>'}</div>
     </div>
+    ${minggiIni(p)}
     <div class="card" style="margin-top:12px"><div class="row between"><h3>10 item termahal</h3><a class="btn sm" href="#/rab/${pid}">Buka RAB</a></div>
       ${top.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Uraian</th><th class="num">Volume</th><th class="num">Jumlah</th><th class="num">Bobot</th></tr></thead><tbody>${top.map(x => `<tr><td>${esc(x.it.URAIAN)}</td><td class="num">${Nmax(x.it.VOLUME, 2)} ${esc(x.it.SATUAN)}</td><td class="num">${rpCell(x.c.jumlah)}</td><td class="num">${pct(x.c.bobot)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="muted">Belum ada item.</div>'}</div>`);
   $('#pSel').onchange = e => { S.meta.activeProject = e.target.value; saveMeta(); render(); };
@@ -679,15 +683,24 @@ function projectForm(p) {
 }
 
 /* ---------- Placeholder tahap berikutnya ---------- */
-route('/jadwal', () => { setTitle('Jadwal'); view(`<div class="page-head"><h2>Jadwal & Kurva S</h2></div><div class="card empty"><p>Modul Timeline, Gantt chart, dan Kurva S dibangun di <strong>Tahap 3</strong>.</p><p class="small">Data RAB yang kamu susun sekarang otomatis menjadi dasar jadwal nanti.</p></div>`); });
-route('/lapangan', () => { setTitle('Lapangan'); view(`<div class="page-head"><h2>Lapangan</h2></div><div class="card empty"><p>Progres, realisasi biaya, opname/BAP, dan pekerjaan tambah-kurang dibangun di <strong>Tahap 4</strong>.</p><p class="small">Tenaga kerja & jumlah tukang sudah tersedia di tab <strong>Tenaga</strong> pada tiap proyek.</p></div>`); });
+route('/lapangan', () => { setTitle('Lapangan'); view(`<div class="page-head"><h2>Lapangan</h2></div><div class="card empty"><p>Realisasi biaya, opname/BAP, dan pekerjaan tambah-kurang dibangun di <strong>Tahap 4</strong>.</p><p class="small">Input progres mingguan & foto dokumentasi sudah tersedia di menu <a href="#/jadwal">Jadwal → Input Progres</a>.</p><p class="small">Tenaga kerja & jumlah tukang sudah tersedia di tab <strong>Tenaga</strong> pada tiap proyek.</p></div>`); });
+
+function minggiIni(p) {
+  const M = jadwalModel(p); if (!M.scheduled || M.weekNow < 1) return '';
+  const R = weekReport(M, M.weekNow);
+  if (!R.mulai.length && !R.selesai.length && !R.late.length) return '';
+  return `<div class="card" style="margin-top:12px"><div class="row between"><h3>Minggu ini (ke-${M.weekNow})</h3><a class="btn sm" href="#/jadwal/${p.ID}/laporan">Laporan</a></div>
+    <div class="small"><strong>Mulai:</strong> ${R.mulai.map(g => esc(g.row.URAIAN)).join(', ') || '-'}<br><strong>Selesai:</strong> ${R.selesai.map(g => esc(g.row.URAIAN)).join(', ') || '-'}</div>
+    ${R.late.length ? `<div class="notice danger" style="margin-top:8px">${ICON.warn}<div>Terlambat: ${R.late.map(x => `${esc(x.g.row.URAIAN)} (${N(x.ap, 0)}% dari rencana ${N(x.pp, 0)}%)`).join(', ')}</div></div>` : ''}</div>`;
+}
 /* ============================================================
  * Halaman proyek: Item | Rekap | Material | Penawaran | Revisi | Info
  * ============================================================ */
-const PTABS = [['item', 'Item RAB'], ['rekap', 'Rekap'], ['material', 'Material'], ['tenaga', 'Tenaga'], ['penawaran', 'Penawaran'], ['revisi', 'Revisi'], ['info', 'Info & File']];
+const PTABS = [['item', 'Item RAB'], ['rekap', 'Rekap'], ['material', 'Material'], ['tenaga', 'Tenaga'], ['jadwal', 'Jadwal'], ['penawaran', 'Penawaran'], ['revisi', 'Revisi'], ['info', 'Info & File']];
 route('/rab/:id', id => projectView(id, 'item'));
 route('/rab/:id/:tab', (id, tab) => projectView(id, tab));
 function projectView(id, tab) {
+  if (tab === 'jadwal') { location.replace(`#/jadwal/${id}/gantt`); return; }
   const p = getRow('PROYEK', id);
   if (!p) { view('<div class="card empty"><p>Proyek tidak ditemukan.</p><a class="btn" href="#/rab">Kembali</a></div>'); return; }
   if (S.meta.activeProject !== id) { S.meta.activeProject = id; saveMeta(); }
@@ -1626,6 +1639,7 @@ function mSetting(el) {
       ${inp('AMBANG_DEVIASI_HSP', 'Ambang deviasi HSP custom (±%)', s.AMBANG_DEVIASI_HSP, { numType: 'num' })}${inp('MASA_BERLAKU_HARI', 'Masa berlaku penawaran (hari)', s.MASA_BERLAKU_HARI, { numType: 'num' })}
       ${inp('JAM_KERJA_HARI', 'Jam kerja per hari', s.JAM_KERJA_HARI, { numType: 'num', hint: '1 OH = 8 jam' })}${inp('HARI_KERJA_MINGGU', 'Hari kerja per minggu', s.HARI_KERJA_MINGGU, { numType: 'num' })}
       ${inp('RASIO_KEPALA_TUKANG', 'Maks. tukang per kepala tukang', s.RASIO_KEPALA_TUKANG, { numType: 'num' })}${inp('RASIO_MANDOR_PEKERJA', 'Maks. pekerja+tukang per mandor', s.RASIO_MANDOR_PEKERJA, { numType: 'num' })}
+      ${inp('DEVIASI_WASPADA', 'Kurva S: waspada bila tertinggal (%)', s.DEVIASI_WASPADA, { numType: 'num' })}${inp('DEVIASI_KRITIS', 'Kurva S: terlambat bila tertinggal (%)', s.DEVIASI_KRITIS, { numType: 'num' })}
       ${inp('FORMAT_NOMOR_PENAWARAN', 'Format nomor penawaran', s.FORMAT_NOMOR_PENAWARAN, { cls: 'span2', hint: '{NO} {BLN} {THN} {KODE}' })}
       ${inp('TERMIN_DEFAULT', 'Skema termin default', s.TERMIN_DEFAULT, { cls: 'span2' })}
       <label class="check span2"><input type="checkbox" name="TAMPIL_CREDIT" ${norm(s.TAMPIL_CREDIT) === 'YA' ? 'checked' : ''}> Tampilkan "dibuat dengan RAB Rumah & Gedung by DG" kecil di dokumen</label>
@@ -1891,8 +1905,8 @@ async function pdfStart(prof) {
   const logo = prof ? await imageData(prof.LOGO_FILE_ID) : '';
   return { doc, logo, prof: prof || {} };
 }
-function pdfKop(ctx, y = 14) {
-  const { doc, logo, prof } = ctx, W = 210, M = 15;
+function pdfKop(ctx, y = 14, W = 210) {
+  const { doc, logo, prof } = ctx, M = 15;
   let x = M;
   if (logo) {
     try { const ip = doc.getImageProperties(logo); const h = 20, w = Math.min(40, ip.width / ip.height * h); doc.addImage(logo, M, y, w, h); x = M + w + 5; } catch (e) { }
@@ -2374,6 +2388,517 @@ async function exportTenagaPdf(p, rk, t, bor) {
   if (tm.length) doc.autoTable(AT({ startY: doc.lastAutoTable.finalY + 6, head: [['#', 'Termin upah', '%', 'Nominal']], body: tm.map(r => [num(r.URUTAN), r.LABEL, pct(r.PERSEN, 1), rpS(r.NOMINAL)]), columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' } } }));
   pdfFooter(ctx, `Tenaga ${p.KODE}`, norm(setting('TAMPIL_CREDIT')) === 'YA');
   await deliverPdf(doc, `${p.KODE}_TENAGA_${todayStr().replace(/-/g, '')}.pdf`, { proyekId: p.ID, kategori: '01_RAB', jenis: 'TENAGA', terkait: p.ID, shareText: `Rekap tenaga ${p.NAMA}: ${N(t.totalOH, 1)} OH, ${t.totalDurasi} hari kerja, upah ${rp(t.totalUpah)}` });
+}
+/* ============================================================
+ * Tahap 3 — Jadwal: Gantt, jalur kritis, Kurva S, progres,
+ * laporan mingguan, cash flow, libur & milestone
+ * ============================================================ */
+const JTABS = [['gantt', 'Gantt'], ['kurva', 'Kurva S'], ['progres', 'Input Progres'], ['laporan', 'Laporan'], ['kalender', 'Libur & Milestone']];
+const progRows = pid => rows('PROGRES').filter(r => r.PROYEK_ID === pid);
+const msRows = pid => rows('MILESTONE').filter(r => r.PROYEK_ID === pid);
+/* Aturan urutan kerja default (kode divisi → [pendahulu, relasi, lag]) */
+const JRULES = {
+  III: ['I', 'FS'], IV: ['III', 'FS'], V: ['IV', 'FS'], VI: ['V', 'FS'], VII: ['VI', 'FS'],
+  XII: ['VII', 'SS', 'HALF'], XIV: ['VII', 'SS', 'HALF'], X: ['VII', 'FS'], IX: ['X', 'FS'], VIII: ['IX', 'FS'], XI: ['VIII', 'FS'],
+  XIII: ['XI', 'FS'], XV: ['XI', 'FS'], XVI: ['XI', 'FS'], XVII: ['XIII', 'FS'], XVIII: ['XVII', 'SS'], XIX: ['XVII', 'FS']
+};
+const JCHAIN = ['I', 'III', 'IV', 'V', 'VI', 'VII', 'X', 'IX', 'VIII', 'XI', 'XIII', 'XVII', 'XIX'];
+
+function jadwalModel(p) {
+  const rk = rekapOf(p), t = tenagaOf(p, rk);
+  const start = String(p.TANGGAL_MULAI || '').slice(0, 10) || todayStr();
+  const hm = num(setting('HARI_KERJA_MINGGU')) || 6;
+  const cal = Calc.calendar(start, hm, rows('LIBUR').map(r => r.TANGGAL), 1500);
+  const J = {}; jadwalRows(p.ID).forEach(r => J[r.ITEM_ID] = r);
+  const td = {}; t.divisi.forEach(d => td[d.id] = d);
+  const groups = rk.groups.filter(g => g.row.ID !== '_');
+  const tasks = groups.map(g => {
+    const j = J[g.row.ID] || {}, smkk = Calc.isSmkk(g.row);
+    return { id: g.row.ID, dur: smkk ? 0 : num((td[g.row.ID] || {}).durasi), pred: j.PREDECESSOR || '', rel: j.JENIS_RELASI || 'FS', lag: num(j.LAG), minStart: j.MULAI || '', span: smkk };
+  });
+  const sched = Calc.schedule(tasks, cal);
+  // jadwal item (opsional): mulai = mulai divisi + offset (LAG), durasi sendiri
+  const itemSched = {};
+  groups.forEach(g => {
+    const r = sched.tasks[g.row.ID]; if (!r) return;
+    g.items.forEach(it => {
+      const j = J[it.ID]; if (!j || !(num(j.DURASI) > 0)) return;
+      const es = r.es + Math.max(0, Math.round(num(j.LAG))), ef = es + Math.round(num(j.DURASI)) - 1;
+      itemSched[it.ID] = { es, ef, dur: ef - es + 1, mulai: cal[es], selesai: cal[ef], over: ef > r.ef };
+    });
+  });
+  const C = rk.C || 1;
+  const bobot = {}; groups.forEach(g => bobot[g.row.ID] = g.subtotal / C);
+  const kurva = Calc.kurvaS(groups.map(g => ({ id: g.row.ID, bobot: bobot[g.row.ID] })), sched, start, cal);
+  const P = progRows(p.ID), byItem = {};
+  P.forEach(r => (byItem[r.ITEM_ID] = byItem[r.ITEM_ID] || []).push(r));
+  const latest = (id, w) => { let b = null; (byItem[id] || []).forEach(r => { if (num(r.MINGGU_KE) <= w && (!b || num(r.MINGGU_KE) > num(b.MINGGU_KE))) b = r; }); return b ? num(b.PERSEN_AKTUAL) : null; };
+  const pctDiv = (g, w) => {
+    const itemHas = g.items.some(it => latest(it.ID, w) !== null);
+    if (itemHas && g.subtotal > 0) return g.items.reduce((a, it) => a + rk.computed[it.ID].jumlah * (latest(it.ID, w) || 0), 0) / g.subtotal;
+    const v = latest(g.row.ID, w); return v === null ? 0 : v;
+  };
+  const actualCum = w => groups.reduce((a, g) => a + bobot[g.row.ID] * pctDiv(g, w), 0);
+  const weeksWithData = [...new Set(P.filter(r => r.ITEM_ID !== '_MINGGU').map(r => num(r.MINGGU_KE)))].sort((a, b) => a - b);
+  const lastData = weeksWithData.length ? weeksWithData[weeksWithData.length - 1] : 0;
+  const weekNow = Calc.weekOf(start, todayStr());
+  const planAt = w => w <= 0 ? 0 : (kurva[w - 1] ? kurva[w - 1].kum : (w > kurva.length && kurva.length ? 100 : 0));
+  const scheduled = sched.durasiKerja > 0;
+  return { p, rk, t, start, cal, groups, tasks, sched, itemSched, bobot, kurva, pctDiv, actualCum, latest, weekNow, lastData, planAt, scheduled, J, td };
+}
+function devStatus(dev) {
+  const wa = num(setting('DEVIASI_WASPADA')) || 5, kr = num(setting('DEVIASI_KRITIS')) || 10;
+  if (dev <= -kr) return ['TERLAMBAT', 'danger'];
+  if (dev <= -wa) return ['WASPADA', 'warning'];
+  if (dev >= wa) return ['LEBIH CEPAT', 'success'];
+  return ['SESUAI', 'success'];
+}
+function autoMilestones(M) {
+  const s = M.sched.tasks, byKode = {};
+  M.groups.forEach(g => byKode[g.row.KODE] = s[g.row.ID]);
+  const endOf = codes => { const e = codes.map(c => byKode[c]).filter(r => r && !r.span); return e.length ? e.reduce((a, r) => r.ef > a.ef ? r : a) : null; };
+  const out = [];
+  const st = endOf(['V']) || endOf(['IV']); if (st) out.push({ nama: 'Selesai struktur', tanggal: st.selesai, auto: true });
+  const at = endOf(['VI']); if (at) out.push({ nama: 'Tutup atap', tanggal: at.selesai, auto: true });
+  const mep = endOf(['XIII', 'XIV', 'XV', 'XVI']); if (mep) out.push({ nama: 'MEP terpasang', tanggal: mep.selesai, auto: true });
+  if (M.scheduled) out.push({ nama: 'Serah terima (PHO)', tanggal: M.sched.selesai, auto: true });
+  return out;
+}
+
+route('/jadwal', () => {
+  const list = projects();
+  if (!list.length) { setTitle('Jadwal'); view(`<div class="page-head"><h2>Jadwal & Kurva S</h2></div><div class="card empty"><p>Belum ada proyek.</p><a class="btn primary" href="#/rab">Buat proyek</a></div>`); return; }
+  const pid = getRow('PROYEK', S.meta.activeProject) ? S.meta.activeProject : list[0].ID;
+  location.replace(`#/jadwal/${pid}/gantt`);
+});
+route('/jadwal/:id/:tab', (id, tab) => jadwalView(id, tab));
+function jadwalView(id, tab) {
+  const p = getRow('PROYEK', id);
+  if (!p) { location.hash = '#/jadwal'; return; }
+  if (S.meta.activeProject !== id) { S.meta.activeProject = id; saveMeta(); }
+  setTitle('Jadwal · ' + p.NAMA, p.KODE);
+  const M = jadwalModel(p);
+  const list = projects();
+  view(`<div class="page-head"><div><h2>Jadwal & Kurva S</h2></div>
+      <div class="actions"><select class="input" id="jpSel" style="min-width:200px">${list.map(x => `<option value="${x.ID}" ${x.ID === id ? 'selected' : ''}>${esc(x.KODE)} · ${esc(x.NAMA)}</option>`).join('')}</select></div></div>
+    <div class="card tight" style="margin-bottom:12px"><div class="row">
+      <div class="field" style="min-width:160px"><label>Tanggal mulai proyek</label><input class="input" type="date" id="jStart" value="${esc(String(p.TANGGAL_MULAI || '').slice(0, 10))}"></div>
+      <div class="kv" style="flex:1;min-width:220px"><dt>Selesai (rencana)</dt><dd>${M.scheduled ? fmtDateLong(M.sched.selesai) : '-'}</dd><dt>Durasi</dt><dd>${M.scheduled ? `${N(M.sched.durasiKerja)} hari kerja · ${N(Calc.daysBetween(M.sched.mulai, M.sched.selesai) + 1)} hari kalender` : '-'}</dd><dt>Minggu berjalan</dt><dd>${M.weekNow > 0 ? 'ke-' + M.weekNow : 'belum mulai'}</dd></div>
+      <div class="row"><button class="btn" id="jAuto">Susun urutan otomatis</button><button class="btn primary" id="jPdf">${ICON.pdf} PDF jadwal</button><button class="btn ghost" id="jXls">Excel</button></div></div>
+      ${!p.TANGGAL_MULAI ? '<div class="notice warning" style="margin-top:10px">Tanggal mulai belum diisi — sementara memakai tanggal hari ini.</div>' : ''}
+      ${M.sched.warn.length ? `<div class="notice warning" style="margin-top:10px">${ICON.warn}<div>${M.sched.warn.map(w => { const g = M.groups.find(x => x.row.ID === w.id); return `${esc(g ? g.row.URAIAN : w.id)}: ${w.code === 'SIKLUS' ? 'ketergantungan melingkar (diabaikan)' : 'pendahulu belum punya durasi'}`; }).join('<br>')}</div></div>` : ''}</div>
+    <div class="tabs">${JTABS.map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? 'active' : ''}">${t}</button>`).join('')}</div><div id="jBody"></div>`);
+  $('#jpSel').onchange = e => { location.hash = `#/jadwal/${e.target.value}/${tab}`; };
+  $$('.tabs button').forEach(b => b.onclick = () => { location.hash = `#/jadwal/${id}/${b.dataset.tab}`; });
+  $('#jStart').onchange = e => { save('PROYEK', { ID: id, TANGGAL_MULAI: e.target.value }); rerenderSoft(); };
+  $('#jAuto').onclick = () => autoArrange(M);
+  $('#jPdf').onclick = () => exportJadwalPdf(M).catch(e => { console.error(e); toast('Gagal membuat PDF: ' + e.message, 'err'); });
+  $('#jXls').onclick = () => exportJadwalXlsx(M);
+  ({ gantt: tabGantt, kurva: tabKurva, progres: tabProgres, laporan: tabLaporan, kalender: tabKalender }[tab] || tabGantt)(M, $('#jBody'));
+}
+
+/* ---------- Susun urutan otomatis ---------- */
+async function autoArrange(M) {
+  if (!await confirmBox('Susun ulang urutan pekerjaan sesuai template standar?\nPersiapan → Tanah → Pondasi → Struktur → Atap → Dinding (+ instalasi plumbing & listrik tertanam) → Kusen → Plafon → Lantai → Sanitair → MEP → Finishing → Pekerjaan luar (paralel).\n\nPendahulu & lag yang sudah ada akan ditimpa. Durasi tidak berubah.', { ok: 'Susun otomatis' })) return;
+  const byKode = {}; M.groups.forEach(g => { if (g.row.KODE) byKode[g.row.KODE] = g; });
+  let prevId = '';
+  M.groups.forEach(g => {
+    if (Calc.isSmkk(g.row)) return;
+    const code = g.row.KODE, rule = JRULES[code];
+    let pred = '', rel = 'FS', lag = 0;
+    if (rule) {
+      let pc = rule[0];
+      if (!byKode[pc]) { const i = JCHAIN.indexOf(pc); for (let k = i - 1; k >= 0; k--) if (byKode[JCHAIN[k]]) { pc = JCHAIN[k]; break; } }
+      if (byKode[pc] && byKode[pc] !== g) {
+        pred = byKode[pc].row.ID; rel = rule[1];
+        if (rule[2] === 'HALF') lag = Math.ceil(num((M.td[pred] || {}).durasi) / 2);
+      }
+    } else if (code !== 'I' && prevId) pred = prevId;
+    const j = M.J[g.row.ID];
+    save('JADWAL', { ID: j ? j.ID : uid('J'), PROYEK_ID: M.p.ID, ITEM_ID: g.row.ID, PREDECESSOR: pred, JENIS_RELASI: rel, LAG: lag }, { silent: true });
+    prevId = g.row.ID;
+  });
+  scheduleSync(); toast('Urutan disusun. Lengkapi durasi divisi yang masih kosong.', 'ok'); rerenderSoft();
+}
+
+/* ---------- Gantt ---------- */
+let GZOOM = 'M', GEXP = {};
+function tabGantt(M, el) {
+  const pxd = { H: 26, M: 9, B: 3.5 }[GZOOM];
+  const LW = window.innerWidth < 640 ? 130 : 230;
+  const start = M.start;
+  const end = M.scheduled ? M.sched.selesai : Calc.addDays(start, 27);
+  const days = Math.max(28, Calc.daysBetween(start, end) + 8);
+  const W = Math.ceil(days * pxd);
+  const x = d => Calc.daysBetween(start, d) * pxd;
+  const work = new Set(M.cal);
+  const ms = autoMilestones(M).concat(msRows(M.p.ID).map(r => ({ nama: r.NAMA, tanggal: r.TANGGAL, status: r.STATUS, id: r.ID })));
+  // header bulan
+  let months = '', d0 = start;
+  for (let i = 0; i < days;) {
+    const dt = Calc.parseYmd(Calc.addDays(start, i)), y = dt.getUTCFullYear(), m = dt.getUTCMonth();
+    const nextMonth = Calc.ymd(new Date(Date.UTC(y, m + 1, 1)));
+    const span = Math.min(days, Calc.daysBetween(start, nextMonth)) - i;
+    months += `<div class="g-mo" style="left:${i * pxd}px;width:${span * pxd}px">${span * pxd > 40 ? BULAN[m].slice(0, 3) + ' ' + String(y).slice(2) : ''}</div>`;
+    i += span;
+  }
+  let sub = '';
+  if (GZOOM === 'H') for (let i = 0; i < days; i++) { const s = Calc.addDays(start, i); sub += `<div class="g-dy ${work.has(s) ? '' : 'off'}" style="left:${i * pxd}px;width:${pxd}px">${+s.slice(8)}</div>`; }
+  else if (GZOOM === 'M') for (let w = 0; w * 7 < days; w++) sub += `<div class="g-dy" style="left:${w * 7 * pxd}px;width:${7 * pxd}px">M${w + 1}</div>`;
+  let shade = '';
+  if (GZOOM === 'H') for (let i = 0; i < days; i++) { const s = Calc.addDays(start, i); if (!work.has(s)) shade += `<div class="g-off" style="left:${i * pxd}px;width:${pxd}px"></div>`; }
+  const today = todayStr(), tx = Calc.daysBetween(start, today);
+  const bar = (r, cls, label, title) => `<div class="g-bar ${cls}" style="left:${x(r.mulai)}px;width:${Math.max(pxd, (Calc.daysBetween(r.mulai, r.selesai) + 1) * pxd)}px" title="${esc(title)}">${(Calc.daysBetween(r.mulai, r.selesai) + 1) * pxd > 60 ? esc(label) : ''}</div>`;
+  const rowsHtml = M.groups.map(g => {
+    const r = M.sched.tasks[g.row.ID], td = M.td[g.row.ID] || {}, j = M.J[g.row.ID] || {};
+    const predG = j.PREDECESSOR ? M.groups.find(x => x.row.ID === j.PREDECESSOR) : null;
+    const pct = M.pctDiv(g, Math.max(1, M.weekNow));
+    const info = r ? `${fmtDate(r.mulai)} – ${fmtDate(r.selesai)} · ${r.dur} hari${r.span ? ' (sepanjang proyek)' : ''}${!r.span && r.float > 0 ? ' · float ' + r.float + ' hari' : ''}${predG ? ` · setelah ${predG.row.KODE || predG.row.URAIAN} (${j.JENIS_RELASI || 'FS'}${num(j.LAG) ? (num(j.LAG) > 0 ? '+' : '') + num(j.LAG) : ''})` : ''}` : 'belum dijadwalkan';
+    const cls = r ? (r.span ? 'span' : r.critical ? 'crit' : '') : '';
+    const items = g.items.filter(it => num(it.VOLUME) > 0);
+    const expanded = GEXP[g.row.ID];
+    let html = `<div class="g-row"><div class="g-lab" data-gdiv="${g.row.ID}" style="width:${LW}px"><span class="g-tog" data-gexp="${g.row.ID}">${items.length ? (expanded ? '▾' : '▸') : ''}</span><div style="min-width:0"><div class="g-t">${esc(g.row.KODE || '')} ${esc(g.row.URAIAN)}</div><div class="g-s">${r ? (r.span ? 'sepanjang proyek' : r.dur + ' hari' + (r.critical ? ' · kritis' : '')) : '<span class="neg">durasi kosong</span>'}</div></div></div>
+      <div class="g-tl" style="width:${W}px">${r ? bar(r, cls, `${g.row.KODE || ''} ${r.dur}h`, `${g.row.URAIAN}\n${info}\nProgres aktual: ${N(pct, 1)}%`) : ''}${r && pct > 0 && !r.span ? `<div class="g-prog" style="left:${x(r.mulai)}px;width:${Math.max(2, (Calc.daysBetween(r.mulai, r.selesai) + 1) * pxd * Math.min(100, pct) / 100)}px"></div>` : ''}</div></div>`;
+    if (expanded) items.forEach(it => {
+      const s = M.itemSched[it.ID] || (r && !r.span ? { mulai: r.mulai, selesai: r.selesai, inherit: true } : null);
+      html += `<div class="g-row g-item"><div class="g-lab" style="width:${LW}px;padding-left:28px"><div style="min-width:0"><div class="g-t" style="font-weight:500">${esc(it.URAIAN)}</div><div class="g-s">${s && !s.inherit ? `${M.itemSched[it.ID].dur} hari${s.over ? ' · <span class="neg">melewati divisi</span>' : ''}` : 'ikut divisi'}</div></div></div>
+        <div class="g-tl" style="width:${W}px">${s ? bar(s, 'item' + (s.inherit ? ' inherit' : ''), '', `${it.URAIAN}\n${fmtDate(s.mulai)} – ${fmtDate(s.selesai)}`) : ''}</div></div>`;
+    });
+    return html;
+  }).join('');
+  const msHtml = ms.filter(m => m.tanggal).map(m => `<div class="g-ms" style="left:${x(m.tanggal) + pxd / 2 - 6}px" title="${esc(m.nama)} · ${fmtDate(m.tanggal)}${m.auto ? ' (otomatis)' : ''}"></div>`).join('');
+  el.innerHTML = `<div class="row" style="margin-bottom:10px"><div class="seg" id="gZoom">${[['H', 'Harian'], ['M', 'Mingguan'], ['B', 'Bulanan']].map(([k, t]) => `<button data-z="${k}" class="${GZOOM === k ? 'active' : ''}">${t}</button>`).join('')}</div>
+      <button class="btn sm ghost" id="gExpAll">${Object.values(GEXP).some(Boolean) ? 'Tutup semua item' : 'Buka semua item'}</button><span class="spacer"></span>
+      <span class="small muted"><span class="g-key crit"></span> kritis <span class="g-key"></span> normal <span class="g-key span"></span> SMKK <span class="g-key ms"></span> milestone <span class="g-key now"></span> hari ini</span></div>
+    ${M.groups.length ? `<div class="gantt"><div class="g-inner" style="width:${LW + W}px">
+      <div class="g-row g-head"><div class="g-lab" style="width:${LW}px"><strong>Pekerjaan</strong></div><div class="g-tl" style="width:${W}px">${months}</div></div>
+      <div class="g-row g-head2"><div class="g-lab" style="width:${LW}px"><span class="small muted">Ketuk nama untuk atur</span></div><div class="g-tl" style="width:${W}px">${sub}</div></div>
+      <div class="g-row g-msrow"><div class="g-lab" style="width:${LW}px"><span class="small muted">Milestone</span></div><div class="g-tl" style="width:${W}px">${msHtml}</div></div>
+      <div class="g-body" style="position:relative">${shade ? `<div class="g-shade" style="left:${LW}px;width:${W}px">${shade}</div>` : ''}${rowsHtml}</div>
+      ${tx >= 0 && tx <= days ? `<div class="g-now" style="left:${LW + tx * pxd + pxd / 2}px"></div>` : ''}
+    </div></div>` : '<div class="card empty"><p>Belum ada divisi pekerjaan di RAB.</p></div>'}
+    <div class="small muted" style="margin-top:8px">Jalur kritis = pekerjaan tanpa kelonggaran waktu; terlambat sehari di sini, proyek ikut mundur. Durasi divisi diambil dari tab Tenaga (bisa diubah di sini). Garis hijau tipis di bar = progres aktual.</div>`;
+  $$('#gZoom button', el).forEach(b => b.onclick = () => { GZOOM = b.dataset.z; rerenderSoft(); });
+  $('#gExpAll', el).onclick = () => { const open = !Object.values(GEXP).some(Boolean); GEXP = {}; if (open) M.groups.forEach(g => GEXP[g.row.ID] = true); rerenderSoft(); };
+  el.onclick = e => {
+    const tg = e.target.closest('[data-gexp]');
+    if (tg) { GEXP[tg.dataset.gexp] = !GEXP[tg.dataset.gexp]; rerenderSoft(); return; }
+    const lb = e.target.closest('[data-gdiv]');
+    if (lb) taskEditor(M, lb.dataset.gdiv);
+  };
+  const gw = $('.gantt', el);
+  if (gw && tx > 0) gw.scrollLeft = Math.max(0, tx * pxd - 120);
+}
+function taskEditor(M, did) {
+  const g = M.groups.find(x => x.row.ID === did); if (!g) return;
+  const j = M.J[did] || {}, td = M.td[did] || {}, r = M.sched.tasks[did];
+  const smkk = Calc.isSmkk(g.row), tukangMode = td.mode === 'TUKANG';
+  const f = M.t.faktorJam || 1;
+  const sugg = td.ohTotal ? [3, 5, 8, 12].map(n => [n, Math.max(1, Math.ceil(td.ohTotal * f / n))]) : [];
+  const items = g.items.filter(it => num(it.VOLUME) > 0);
+  openModal({
+    title: `${g.row.KODE || ''} ${g.row.URAIAN}`, wide: true,
+    body: smkk ? `<div class="notice">Divisi SMKK berjalan sepanjang proyek (mulai hari pertama s.d. serah terima), otomatis mengikuti durasi total.</div>` : `<form id="tkF" class="form-grid c2">
+        <div class="field"><label>Durasi (hari kerja)</label><input class="input num" name="DURASI" inputmode="numeric" value="${tukangMode ? '' : (num(td.durasi) || '')}" placeholder="${tukangMode ? N(td.durasi) + ' (dari jumlah tukang)' : 'hari'}" ${tukangMode ? 'disabled' : ''}>
+          <span class="hint">${tukangMode ? `Dihitung dari ${num((tenagaPlan(M.p.ID)[did] || {}).tukang)} tukang tersedia di tab Tenaga. <a href="#/rab/${M.p.ID}/tenaga">Ubah di Tenaga</a>` : td.ohTotal ? `Kebutuhan ${N(td.ohTotal, 1)} OH. Saran: ${sugg.map(([n, d]) => `<a href="#" data-sg="${d}">${n} org → ${d} hari</a>`).join(' · ')}` : 'Divisi ini tidak punya koefisien tenaga (harga pasar/LS) — isi durasi manual.'}</span></div>
+        <div class="field"><label>Mulai paling cepat (opsional)</label><input class="input" type="date" name="MULAI" value="${esc(String(j.MULAI || '').slice(0, 10))}"><span class="hint">Batas awal, misal menunggu izin/material</span></div>
+        ${sel('PREDECESSOR', 'Dikerjakan setelah', j.PREDECESSOR || '', [['', '— tidak ada (mulai awal proyek) —']].concat(M.groups.filter(x => x.row.ID !== did && !Calc.isSmkk(x.row)).map(x => [x.row.ID, `${x.row.KODE || ''} ${x.row.URAIAN}`])), { cls: 'span2' })}
+        ${sel('JENIS_RELASI', 'Jenis hubungan', j.JENIS_RELASI || 'FS', [['FS', 'FS — mulai setelah pendahulu selesai'], ['SS', 'SS — mulai bersamaan / setelah pendahulu mulai']])}
+        ${inp('LAG', 'Lag (hari kerja)', j.LAG, { numType: 'num', hint: 'Jeda tambahan. Contoh: cor plat → bongkar bekisting 21–28 hari' })}
+      </form>
+      ${items.length ? `<h3 style="margin:16px 0 8px;font-size:14px">Jadwal per item (opsional)</h3><div class="small muted" style="margin-bottom:6px">Kosongkan durasi agar item mengikuti jadwal divisi. Offset = mulai berapa hari kerja setelah divisi mulai.</div>
+      <div class="table-wrap"><table class="t"><thead><tr><th>Item</th><th class="num">Durasi</th><th class="num">Offset</th></tr></thead><tbody>${items.map(it => { const ji = M.J[it.ID] || {}; return `<tr data-it="${it.ID}" data-jid="${ji.ID || ''}"><td>${esc(it.URAIAN)}</td><td class="num"><input class="input num" data-f="DURASI" inputmode="numeric" value="${num(ji.DURASI) || ''}" style="width:70px"></td><td class="num"><input class="input num" data-f="LAG" inputmode="numeric" value="${num(ji.LAG) || ''}" style="width:70px"></td></tr>`; }).join('')}</tbody></table></div>` : ''}
+      ${r && !r.span ? `<div class="small muted" style="margin-top:10px">Saat ini: ${fmtDate(r.mulai)} – ${fmtDate(r.selesai)} · float ${r.float} hari${r.critical ? ' · <strong class="neg">jalur kritis</strong>' : ''}</div>` : ''}`,
+    foot: smkk ? '<button class="btn" data-close>Tutup</button>' : `<button class="btn" data-close>Batal</button><button class="btn primary" id="tkOk">Simpan</button>`,
+    onOpen: (el, m) => {
+      $$('[data-sg]', el).forEach(a => a.onclick = e => { e.preventDefault(); $('[name=DURASI]', el).value = a.dataset.sg; });
+      $('#tkOk', el) && ($('#tkOk', el).onclick = () => {
+        const d = formData($('#tkF', el));
+        const patch = { ID: j.ID || uid('J'), PROYEK_ID: M.p.ID, ITEM_ID: did, MULAI: d.MULAI, PREDECESSOR: d.PREDECESSOR, JENIS_RELASI: d.JENIS_RELASI, LAG: d.LAG === '' ? 0 : d.LAG };
+        if (!tukangMode) { patch.DURASI = d.DURASI === '' ? '' : Math.max(0, Math.round(num(d.DURASI))); }
+        // cegah siklus sederhana
+        if (d.PREDECESSOR) { let c = d.PREDECESSOR, guard = 0; while (c && guard++ < 50) { if (c === did) return toast('Hubungan melingkar — pilih pendahulu lain', 'err'); c = (M.J[c] || {}).PREDECESSOR; } }
+        save('JADWAL', patch, { silent: true });
+        $$('tr[data-it]', el).forEach(tr => {
+          const du = parseNum($('[data-f=DURASI]', tr).value), lg = parseNum($('[data-f=LAG]', tr).value), jid = tr.dataset.jid;
+          if (du === '' || !(num(du) > 0)) { if (jid) save('JADWAL', { ID: jid, DURASI: '', LAG: '' }, { silent: true }); return; }
+          save('JADWAL', { ID: jid || uid('J'), PROYEK_ID: M.p.ID, ITEM_ID: tr.dataset.it, DURASI: Math.round(du), LAG: lg === '' ? 0 : Math.round(lg) }, { silent: true });
+        });
+        scheduleSync(); m.close(); rerenderSoft();
+      });
+    }
+  });
+}
+
+/* ---------- Kurva S ---------- */
+function kurvaSvg(M, w = 760, h = 300) {
+  const K = M.kurva; if (!K.length) return '';
+  const pad = { l: 40, r: 12, t: 14, b: 30 }, n = K.length;
+  const X = i => pad.l + i / n * (w - pad.l - pad.r), Y = v => pad.t + (1 - v / 100) * (h - pad.t - pad.b);
+  const plan = [[X(0), Y(0)]].concat(K.map((k, i) => [X(i + 1), Y(k.kum)]));
+  const lastW = Math.min(n, M.lastData);
+  const act = lastW ? [[X(0), Y(0)]].concat(Array.from({ length: lastW }, (_, i) => [X(i + 1), Y(Math.min(100, M.actualCum(i + 1)))])) : [];
+  const maxInc = Math.max(1, ...K.map(k => k.rencana));
+  const bars = K.map((k, i) => `<rect x="${X(i) + 1}" y="${Y(k.rencana / maxInc * 30)}" width="${Math.max(1, X(1) - X(0) - 2)}" height="${Y(0) - Y(k.rencana / maxInc * 30)}" fill="${THEME.primary50}"><title>Minggu ${k.minggu}: rencana +${N(k.rencana, 2)}%</title></rect>`).join('');
+  const grid = [0, 25, 50, 75, 100].map(v => `<line x1="${pad.l}" x2="${w - pad.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${THEME.border}"/><text x="${pad.l - 6}" y="${Y(v) + 4}" font-size="10" text-anchor="end" fill="${THEME.muted}">${v}%</text>`).join('');
+  const step = Math.ceil(n / 12);
+  const xl = K.map((k, i) => (i + 1) % step === 0 || i === n - 1 ? `<text x="${X(i + 1)}" y="${h - 10}" font-size="10" text-anchor="middle" fill="${THEME.muted}">M${k.minggu}</text>` : '').join('');
+  const nowX = M.weekNow > 0 && M.weekNow <= n ? `<line x1="${X(M.weekNow)}" x2="${X(M.weekNow)}" y1="${pad.t}" y2="${Y(0)}" stroke="${THEME.accent}" stroke-dasharray="4 3"/>` : '';
+  const pts = a => a.map(p => p.join(',')).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block" role="img" aria-label="Kurva S">${grid}${bars}${nowX}
+    <polyline points="${pts(plan)}" fill="none" stroke="${THEME.primary}" stroke-width="2.5"/>
+    ${act.length ? `<polyline points="${pts(act)}" fill="none" stroke="${THEME.accent}" stroke-width="2.5"/>${act.slice(1).map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${THEME.accent}"><title>Minggu ${i + 1}: aktual ${N(M.actualCum(i + 1), 1)}%</title></circle>`).join('')}` : ''}
+    ${xl}</svg>`;
+}
+function tabKurva(M, el) {
+  if (!M.kurva.length) { el.innerHTML = '<div class="card empty"><p>Kurva S muncul setelah divisi punya durasi di tab Gantt/Tenaga.</p></div>'; return; }
+  const lastW = M.lastData;
+  const cur = Math.max(0, Math.min(M.kurva.length, lastW || M.weekNow));
+  const dev = cur ? M.actualCum(cur) - M.planAt(cur) : 0, st = devStatus(dev);
+  el.innerHTML = `<div class="grid k4">
+      <div class="card kpi"><div class="label">Rencana s.d. minggu ${cur || '-'}</div><div class="value">${cur ? pct(M.planAt(cur), 1) : '-'}</div></div>
+      <div class="card kpi"><div class="label">Aktual s.d. minggu ${cur || '-'}</div><div class="value">${lastW ? pct(M.actualCum(cur), 1) : '-'}</div><div class="hint">${lastW ? 'data progres terakhir minggu ke-' + lastW : 'belum ada input progres'}</div></div>
+      <div class="card kpi"><div class="label">Deviasi</div><div class="value ${dev < 0 ? 'neg' : ''}">${lastW ? (dev > 0 ? '+' : '') + N(dev, 1) + '%' : '-'}</div><div class="hint">${lastW ? badge(st[0], st[1]) : ''}</div></div>
+      <div class="card kpi"><div class="label">Estimasi selesai</div><div class="value" style="font-size:16px">${estimasiSelesai(M) || '-'}</div><div class="hint">rencana ${fmtDate(M.sched.selesai)}</div></div></div>
+    <div class="card" style="margin-top:12px"><div class="row between"><h3>Kurva S</h3><span class="small muted"><span class="g-key"></span> rencana <span class="g-key acc"></span> aktual <span class="g-key now"></span> minggu ini</span></div>${kurvaSvg(M)}</div>
+    <div class="card" style="margin-top:12px"><h3>Tabel mingguan</h3><div class="table-wrap"><table class="t"><thead><tr><th>Minggu</th><th>Periode</th><th class="num">Rencana minggu ini</th><th class="num">Rencana kumulatif</th><th class="num">Aktual kumulatif</th><th class="num">Deviasi</th><th>Status</th></tr></thead><tbody>
+      ${M.kurva.map(k => { const has = k.minggu <= lastW; const a = has ? M.actualCum(k.minggu) : null, d = has ? a - k.kum : null, s = has ? devStatus(d) : null; return `<tr${k.minggu === M.weekNow ? ' class="sub"' : ''}><td>${k.minggu}</td><td class="small">${fmtDate(k.mulai)} – ${fmtDate(k.selesai)}</td><td class="num">${pct(k.rencana, 2)}</td><td class="num">${pct(k.kum, 2)}</td><td class="num">${has ? pct(a, 2) : '-'}</td><td class="num ${d < 0 ? 'neg' : ''}">${has ? (d > 0 ? '+' : '') + N(d, 2) + '%' : '-'}</td><td>${has ? badge(s[0], s[1]) : ''}</td></tr>`; }).join('')}
+    </tbody></table></div><div class="small muted" style="margin-top:6px">Ambang: waspada −${setting('DEVIASI_WASPADA')}%, terlambat −${setting('DEVIASI_KRITIS')}% (Master → Pengaturan). Bobot = nilai divisi ÷ total biaya pekerjaan + SMKK, disebar rata pada hari kerjanya.</div></div>`;
+}
+function estimasiSelesai(M) {
+  // SPI (Schedule Performance Index) = aktual ÷ rencana; durasi perkiraan = durasi rencana ÷ SPI
+  const w = M.lastData; if (!w || !M.scheduled) return '';
+  const a = M.actualCum(w), pl = M.planAt(w); if (a <= 0 || pl <= 0) return '';
+  if (a >= 99.99) return 'Selesai';
+  const spi = a / pl, planDays = Calc.daysBetween(M.start, M.sched.selesai) + 1;
+  return fmtDateLong(Calc.addDays(M.start, Math.max(0, Math.ceil(planDays / spi) - 1))) + ` (SPI ${N(spi, 2)})`;
+}
+/* ---------- Input progres ---------- */
+let PWEEK = {};
+function tabProgres(M, el) {
+  if (!M.scheduled) { el.innerHTML = '<div class="card empty"><p>Atur durasi divisi di tab Gantt dulu.</p></div>'; return; }
+  const maxW = Math.max(M.kurva.length, M.weekNow, 1);
+  let w = PWEEK[M.p.ID] || Math.min(Math.max(1, M.weekNow), maxW);
+  const head = progRows(M.p.ID).find(r => r.ITEM_ID === '_MINGGU' && num(r.MINGGU_KE) === w) || {};
+  const fotos = String(head.FOTO || '').split('\n').filter(Boolean);
+  el.innerHTML = `<div class="row" style="margin-bottom:12px"><div class="field"><label>Minggu ke-</label><select class="input" id="pwSel" style="width:auto">${Array.from({ length: maxW + 2 }, (_, i) => i + 1).map(i => `<option value="${i}" ${i === w ? 'selected' : ''}>Minggu ${i} · ${fmtDate(Calc.addDays(M.start, (i - 1) * 7))} – ${fmtDate(Calc.addDays(M.start, i * 7 - 1))}${i === M.weekNow ? ' (berjalan)' : ''}</option>`).join('')}</select></div>
+      <span class="spacer"></span><div class="small muted">Isi <strong>persen kumulatif</strong> (total selesai s.d. minggu ini, 0–100). Kosong = sama dengan minggu sebelumnya.</div></div>
+    <div class="table-wrap"><table class="t" id="pgT"><thead><tr><th>Pekerjaan</th><th class="num">Bobot</th><th class="num">Rencana</th><th class="num">Aktual minggu lalu</th><th class="num">Aktual s.d. minggu ini (%)</th></tr></thead><tbody>
+      ${M.groups.filter(g => M.bobot[g.row.ID] > 0).map(g => {
+        const r = M.sched.tasks[g.row.ID], plan = Calc.planPct(r, w, M.start, M.cal), prev = M.pctDiv(g, w - 1);
+        const own = progRows(M.p.ID).find(x => x.ITEM_ID === g.row.ID && num(x.MINGGU_KE) === w);
+        const itemsV = g.items.filter(it => num(it.VOLUME) > 0);
+        const itemMode = g.items.some(it => M.latest(it.ID, w) !== null);
+        return `<tr data-pg="${g.row.ID}"><td><strong>${esc(g.row.KODE || '')} ${esc(g.row.URAIAN)}</strong>${itemsV.length ? `<div><a href="#" class="small" data-pexp="${g.row.ID}">${itemMode ? 'detail per item ▾' : 'isi per item ▸'}</a></div>` : ''}</td><td class="num">${pct(M.bobot[g.row.ID] * 100, 2)}</td><td class="num">${pct(plan, 0)}</td><td class="num">${pct(prev, 0)}</td>
+          <td class="num"><input class="input num" data-pv inputmode="decimal" value="${own ? N(own.PERSEN_AKTUAL, 1).replace(',0', '') : ''}" placeholder="${itemMode ? 'per item' : N(prev, 0)}" ${itemMode ? 'disabled' : ''} style="width:90px"></td></tr>
+          ${itemsV.map(it => { const o = progRows(M.p.ID).find(x => x.ITEM_ID === it.ID && num(x.MINGGU_KE) === w); const pv = M.latest(it.ID, w - 1); return `<tr data-pit="${it.ID}" data-of="${g.row.ID}" class="${itemMode ? '' : 'hidden'}"><td style="padding-left:28px">${esc(it.URAIAN)}</td><td class="num small">${pct(bobotItem(M, it) * 100, 2)}</td><td></td><td class="num small">${pv === null ? '-' : pct(pv, 0)}</td><td class="num"><input class="input num" data-pv inputmode="decimal" value="${o ? N(o.PERSEN_AKTUAL, 1).replace(',0', '') : ''}" placeholder="${pv === null ? '0' : N(pv, 0)}" style="width:90px"></td></tr>`; }).join('')}`;
+      }).join('')}</tbody></table></div>
+    <div class="grid md2" style="margin-top:12px">
+      <div class="field"><label>Catatan minggu ini</label><textarea class="input" id="pgNote" rows="3" placeholder="cuaca, kendala, material datang, dll">${esc(head.CATATAN || '')}</textarea></div>
+      <div class="field"><label>Foto dokumentasi</label><div class="row"><label class="btn sm">${ICON.plus} Tambah foto<input type="file" id="pgFoto" accept="image/*" multiple hidden></label><span class="small muted">dikompres & disimpan ke Drive 06_Progres</span></div>
+        <div class="chips" style="margin-top:6px">${fotos.map((u, i) => `<a class="badge info" href="${esc(u)}" target="_blank" rel="noopener">Foto ${i + 1}</a>`).join('')}${S.uploads.filter(u => u.jenis === 'PROGRES' && u.proyekId === M.p.ID).length ? badge(S.uploads.filter(u => u.jenis === 'PROGRES' && u.proyekId === M.p.ID).length + ' menunggu upload', 'warning') : ''}</div></div></div>
+    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" id="pgSave">Simpan progres minggu ${w}</button></div>`;
+  $('#pwSel', el).onchange = e => { PWEEK[M.p.ID] = +e.target.value; rerenderSoft(); };
+  $$('[data-pexp]', el).forEach(a => a.onclick = e => { e.preventDefault(); const id = a.dataset.pexp; const trs = $$(`tr[data-of="${id}"]`, el); const show = trs.some(t => t.classList.contains('hidden')); trs.forEach(t => t.classList.toggle('hidden', !show)); $(`tr[data-pg="${id}"] [data-pv]`, el).disabled = show; a.textContent = show ? 'detail per item ▾' : 'isi per item ▸'; });
+  $('#pgFoto', el).onchange = async e => {
+    const files = Array.from(e.target.files || []); e.target.value = '';
+    const hid = head.ID || `${M.p.ID}|${w}|_MINGGU`;
+    if (!head.ID) save('PROGRES', { ID: hid, PROYEK_ID: M.p.ID, MINGGU_KE: w, ITEM_ID: '_MINGGU', TANGGAL: todayStr() });
+    let n = fotos.length;
+    for (const f of files) {
+      try {
+        const r = await compressImage(f, 1600, 0.8);
+        n++;
+        await queueUpload({ blob: dataUrlToBlob(r.dataUrl), name: `${M.p.KODE}_PROGRES_M${String(w).padStart(2, '0')}_${todayStr().replace(/-/g, '')}_${String(n).padStart(2, '0')}.jpg`, mime: 'image/jpeg', kategori: '06_Progres', proyekId: M.p.ID, jenis: 'PROGRES', terkait: hid, onDone: { type: 'appendFoto', table: 'PROGRES', id: hid } });
+      } catch (er) { toast(er.message, 'err'); }
+    }
+    toast(`${files.length} foto masuk antrian upload — tersimpan otomatis ke Drive`, 'ok');
+    const chips = $('#pgFoto', el).closest('.field').querySelector('.chips');
+    if (chips) chips.insertAdjacentHTML('beforeend', badge(files.length + ' foto ditambahkan', 'warning'));
+  };
+  $('#pgSave', el).onclick = () => {
+    let n = 0, bad = 0;
+    $$('#pgT tr[data-pg], #pgT tr[data-pit]', el).forEach(tr => {
+      const inpEl = $('[data-pv]', tr); if (!inpEl || inpEl.disabled || (tr.dataset.pit && tr.classList.contains('hidden'))) return;
+      const id = tr.dataset.pg || tr.dataset.pit, v = parseNum(inpEl.value);
+      const rid = `${M.p.ID}|${w}|${id}`;
+      if (v === '') { if (getRow('PROGRES', rid)) save('PROGRES', { ID: rid, DELETED: 'YA' }, { silent: true }); return; }
+      if (v < 0 || v > 100) { bad++; return; }
+      save('PROGRES', { ID: rid, PROYEK_ID: M.p.ID, MINGGU_KE: w, ITEM_ID: id, PERSEN_AKTUAL: v, TANGGAL: todayStr() }, { silent: true }); n++;
+    });
+    const note = $('#pgNote', el).value.trim();
+    if (note || head.ID) save('PROGRES', { ID: head.ID || `${M.p.ID}|${w}|_MINGGU`, PROYEK_ID: M.p.ID, MINGGU_KE: w, ITEM_ID: '_MINGGU', CATATAN: note, TANGGAL: todayStr() }, { silent: true });
+    if (bad) toast(`${bad} nilai di luar 0–100 diabaikan`, 'err');
+    scheduleSync(); toast(`Progres minggu ${w} disimpan (${n} baris)`, 'ok'); rerenderSoft();
+  };
+}
+function bobotItem(M, it) { const c = M.rk.computed[it.ID]; return c && M.rk.C ? c.jumlah / M.rk.C : 0; }
+UPLOAD_HOOKS.appendFoto = (d, r) => { const cur = getRow(d.table, d.id); const list = String((cur && cur.FOTO) || '').split('\n').filter(Boolean); list.push(r.url); save(d.table, { ID: d.id, FOTO: list.join('\n') }); };
+
+/* ---------- Laporan mingguan + cash flow ---------- */
+function weekReport(M, w) {
+  const plan = M.planAt(w), act = M.actualCum(w), dev = act - plan, st = devStatus(dev);
+  const wa = num(setting('DEVIASI_WASPADA')) || 5;
+  const late = [], mulai = [], selesai = [];
+  const ws = Calc.addDays(M.start, (w - 1) * 7), we = Calc.addDays(M.start, w * 7 - 1);
+  M.groups.forEach(g => {
+    const r = M.sched.tasks[g.row.ID]; if (!r || r.span) return;
+    const pp = Calc.planPct(r, w, M.start, M.cal), ap = M.pctDiv(g, w);
+    if (pp - ap >= wa) late.push({ g, pp, ap });
+    if (r.mulai >= ws && r.mulai <= we) mulai.push(g);
+    if (r.selesai >= ws && r.selesai <= we) selesai.push(g);
+  });
+  return { w, ws, we, plan, act, dev, st, late, mulai, selesai };
+}
+function cashflow(M) {
+  const C = M.rk.C, tm = terminRows(M.p.ID).filter(r => num(r.MINGGU_KE) > 0);
+  let kum = 0;
+  return M.kurva.map(k => { const v = Math.round(k.rencana / 100 * C); kum += v; const up = tm.filter(r => num(r.MINGGU_KE) === k.minggu).reduce((a, r) => a + num(r.NOMINAL), 0); return { minggu: k.minggu, mulai: k.mulai, biaya: v, kum, upah: up }; });
+}
+function tabLaporan(M, el) {
+  if (!M.scheduled) { el.innerHTML = '<div class="card empty"><p>Atur durasi divisi di tab Gantt dulu.</p></div>'; return; }
+  const maxW = Math.max(M.kurva.length, M.weekNow, 1);
+  let w = PWEEK[M.p.ID] || Math.min(Math.max(1, M.lastData || M.weekNow), maxW);
+  const R = weekReport(M, w), head = progRows(M.p.ID).find(r => r.ITEM_ID === '_MINGGU' && num(r.MINGGU_KE) === w) || {};
+  const cf = cashflow(M);
+  el.innerHTML = `<div class="row" style="margin-bottom:12px"><div class="field"><label>Laporan minggu ke-</label><select class="input" id="lwSel" style="width:auto">${Array.from({ length: maxW }, (_, i) => i + 1).map(i => `<option value="${i}" ${i === w ? 'selected' : ''}>Minggu ${i}${i === M.weekNow ? ' (berjalan)' : ''}</option>`).join('')}</select></div><span class="spacer"></span><button class="btn primary" id="lwPdf">${ICON.pdf} PDF laporan</button><button class="btn ghost" id="lwWa">${ICON.share} WhatsApp</button></div>
+    <div class="grid md2"><div class="card"><h3>Minggu ${w} · ${fmtDate(R.ws)} – ${fmtDate(R.we)}</h3><dl class="kv">
+      <dt>Rencana kumulatif</dt><dd>${pct(R.plan, 2)}</dd><dt>Aktual kumulatif</dt><dd>${M.lastData >= w ? pct(R.act, 2) : '<span class="muted">belum diisi</span>'}</dd>
+      <dt>Deviasi</dt><dd class="${R.dev < 0 ? 'neg' : ''}">${M.lastData >= w ? (R.dev > 0 ? '+' : '') + N(R.dev, 2) + '%' : '-'}</dd><dt>Status</dt><dd>${M.lastData >= w ? badge(R.st[0], R.st[1]) : '-'}</dd>
+      <dt>Estimasi selesai</dt><dd>${estimasiSelesai(M) || '-'}</dd><dt>Rencana selesai</dt><dd>${fmtDateLong(M.sched.selesai)}</dd></dl>
+      ${head.CATATAN ? `<div class="notice" style="margin-top:10px;white-space:pre-line">${esc(head.CATATAN)}</div>` : ''}
+      ${String(head.FOTO || '').trim() ? `<div class="chips" style="margin-top:8px">${String(head.FOTO).split('\n').filter(Boolean).map((u, i) => `<a class="badge info" href="${esc(u)}" target="_blank" rel="noopener">Foto ${i + 1}</a>`).join('')}</div>` : ''}</div>
+    <div class="card"><h3>Perlu perhatian</h3>
+      ${R.late.length ? `<div class="list">${R.late.map(x => `<div class="li"><span class="ico" style="color:var(--danger)">${ICON.warn}</span><div class="main"><div class="t1">${esc(x.g.row.KODE || '')} ${esc(x.g.row.URAIAN)}</div><div class="t2">rencana ${pct(x.pp, 0)} · aktual ${pct(x.ap, 0)}</div></div></div>`).join('')}</div>` : '<div class="small muted">Tidak ada pekerjaan terlambat.</div>'}
+      <div class="small" style="margin-top:10px"><strong>Mulai minggu ini:</strong> ${R.mulai.map(g => esc(g.row.KODE || g.row.URAIAN)).join(', ') || '-'}<br><strong>Selesai minggu ini:</strong> ${R.selesai.map(g => esc(g.row.KODE || g.row.URAIAN)).join(', ') || '-'}</div></div></div>
+    <div class="card" style="margin-top:12px"><h3>Rencana cash flow</h3><div class="table-wrap"><table class="t"><thead><tr><th>Minggu</th><th class="num">Biaya rencana</th><th class="num">Kumulatif</th><th class="num">Termin upah</th></tr></thead><tbody>${cf.map(c => `<tr${c.minggu === w ? ' class="sub"' : ''}><td>M${c.minggu} <span class="small muted">${fmtDate(c.mulai)}</span></td><td class="num">${rpCell(c.biaya)}</td><td class="num">${rpCell(c.kum)}</td><td class="num">${c.upah ? rpCell(c.upah) : '-'}</td></tr>`).join('')}</tbody></table></div>
+      <div class="small muted" style="margin-top:6px">Biaya rencana = bobot Kurva S × total biaya pekerjaan + SMKK (${rp(M.rk.C)}), sebelum biaya tak terduga & PPN. Termin upah diambil dari tab Tenaga (pola mingguan).</div></div>`;
+  $('#lwSel', el).onchange = e => { PWEEK[M.p.ID] = +e.target.value; rerenderSoft(); };
+  $('#lwPdf', el).onclick = () => exportLaporanPdf(M, w).catch(e => { console.error(e); toast('Gagal membuat PDF: ' + e.message, 'err'); });
+  $('#lwWa', el).onclick = () => shareWa(`*Laporan Progres Minggu ${w}*\n${M.p.NAMA}\nPeriode ${fmtDate(R.ws)} – ${fmtDate(R.we)}\nRencana: ${pct(R.plan, 1)} · Aktual: ${pct(R.act, 1)} · Deviasi: ${(R.dev > 0 ? '+' : '') + N(R.dev, 1)}% (${R.st[0]})${R.late.length ? '\nTerlambat: ' + R.late.map(x => x.g.row.URAIAN).join(', ') : ''}${head.CATATAN ? '\nCatatan: ' + head.CATATAN : ''}`);
+}
+
+/* ---------- Libur & milestone ---------- */
+function tabKalender(M, el) {
+  const lib = rows('LIBUR').sort((a, b) => String(a.TANGGAL).localeCompare(String(b.TANGGAL)));
+  const yr = new Set(lib.map(l => String(l.TANGGAL).slice(0, 4)));
+  const auto = autoMilestones(M), man = msRows(M.p.ID).sort((a, b) => String(a.TANGGAL).localeCompare(String(b.TANGGAL)));
+  el.innerHTML = `<div class="grid md2">
+    <div class="card"><h3>Milestone</h3><div class="list">${auto.map(m => `<div class="li"><div class="main"><div class="t1">${esc(m.nama)} ${badge('otomatis', 'primary')}</div><div class="t2">${fmtDateLong(m.tanggal)}</div></div></div>`).join('')}
+      ${man.map(m => `<div class="li"><div class="main"><div class="t1">${esc(m.NAMA)}</div><div class="t2">${fmtDateLong(m.TANGGAL)}</div></div><select class="input" data-mst="${m.ID}" style="width:130px">${['RENCANA', 'TERCAPAI', 'TERLAMBAT'].map(s => `<option ${norm(m.STATUS) === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button class="btn sm ghost" data-mdel="${m.ID}">Hapus</button></div>`).join('')}</div>
+      <div class="row" style="margin-top:10px"><input class="input" id="msN" placeholder="Nama milestone, mis. Pengecoran plat lt.2" style="flex:2;min-width:160px"><input class="input" type="date" id="msD" style="flex:1;min-width:140px"><button class="btn" id="msAdd">Tambah</button></div></div>
+    <div class="card"><h3>Hari libur (${lib.length})</h3><div class="small muted" style="margin-bottom:8px">Hari libur tidak dihitung sebagai hari kerja. Data awal: libur nasional & cuti bersama SKB 3 Menteri ${[...yr].sort().join(', ') || '-'}. Hapus cuti bersama bila tukang tetap bekerja.</div>
+      <div class="list" style="max-height:340px;overflow:auto">${lib.map(l => `<div class="li"><div class="main"><div class="t1">${fmtDateLong(l.TANGGAL)}</div><div class="t2">${esc(l.KETERANGAN || '')}</div></div><button class="btn sm ghost" data-ldel="${l.ID}">Hapus</button></div>`).join('') || '<div class="muted small">Belum ada.</div>'}</div>
+      <div class="row" style="margin-top:10px"><input class="input" type="date" id="lbD" style="flex:1;min-width:140px"><input class="input" id="lbK" placeholder="Keterangan" style="flex:2;min-width:140px"><button class="btn" id="lbAdd">Tambah</button></div></div></div>`;
+  $('#msAdd', el).onclick = () => { const n = $('#msN', el).value.trim(), d = $('#msD', el).value; if (!n || !d) return toast('Isi nama & tanggal', 'err'); save('MILESTONE', { ID: uid('MS'), PROYEK_ID: M.p.ID, NAMA: n, TANGGAL: d, STATUS: 'RENCANA' }); rerenderSoft(); };
+  $$('[data-mst]', el).forEach(s => s.onchange = () => save('MILESTONE', { ID: s.dataset.mst, STATUS: s.value }));
+  $$('[data-mdel]', el).forEach(b => b.onclick = () => { remove('MILESTONE', b.dataset.mdel); rerenderSoft(); });
+  $('#lbAdd', el).onclick = () => { const d = $('#lbD', el).value; if (!d) return toast('Pilih tanggal', 'err'); save('LIBUR', { ID: 'L' + d.replace(/-/g, '') + uid().slice(-3), TANGGAL: d, KETERANGAN: $('#lbK', el).value.trim() }); rerenderSoft(); };
+  $$('[data-ldel]', el).forEach(b => b.onclick = () => { remove('LIBUR', b.dataset.ldel); rerenderSoft(); });
+}
+
+/* ---------- Export ---------- */
+async function exportJadwalXlsx(M) {
+  const X = await needXlsx(), wb = X.utils.book_new();
+  const A = [['Kode', 'Pekerjaan', 'Durasi (hari kerja)', 'Mulai', 'Selesai', 'Setelah', 'Relasi', 'Lag', 'Float', 'Kritis', 'Bobot %']];
+  M.groups.forEach(g => {
+    const r = M.sched.tasks[g.row.ID], j = M.J[g.row.ID] || {}, pg = M.groups.find(x => x.row.ID === j.PREDECESSOR);
+    A.push([g.row.KODE || '', g.row.URAIAN, r ? r.dur : '', r ? fmtDate(r.mulai) : '', r ? fmtDate(r.selesai) : '', pg ? `${pg.row.KODE || ''} ${pg.row.URAIAN}` : '', j.JENIS_RELASI || '', num(j.LAG), r && !r.span ? r.float : '', r && r.critical ? 'YA' : '', Calc.round(M.bobot[g.row.ID] * 100, 3)]);
+    g.items.forEach(it => { const s = M.itemSched[it.ID]; if (s) A.push(['', '   ' + it.URAIAN, s.dur, fmtDate(s.mulai), fmtDate(s.selesai), '', '', '', '', '', '']); });
+  });
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(A), 'Jadwal');
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Minggu', 'Mulai', 'Selesai', 'Rencana %', 'Rencana kum %', 'Aktual kum %', 'Deviasi %']].concat(M.kurva.map(k => { const has = k.minggu <= M.lastData; const a = has ? M.actualCum(k.minggu) : ''; return [k.minggu, fmtDate(k.mulai), fmtDate(k.selesai), Calc.round(k.rencana, 3), Calc.round(k.kum, 3), has ? Calc.round(a, 3) : '', has ? Calc.round(a - k.kum, 3) : '']; }))), 'Kurva S');
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Minggu', 'Biaya rencana', 'Kumulatif', 'Termin upah']].concat(cashflow(M).map(c => [c.minggu, c.biaya, c.kum, c.upah]))), 'Cash flow');
+  X.writeFile(wb, `${M.p.KODE}_JADWAL_${todayStr().replace(/-/g, '')}.xlsx`);
+}
+async function exportJadwalPdf(M) {
+  if (!M.scheduled) return toast('Atur durasi divisi dulu', 'err');
+  const prof = profilOf(M.p.PROFIL_ID), jsPDF = await needPdf();
+  const doc = new jsPDF({ unit: 'mm', format: 'a3', orientation: 'landscape' });
+  doc._texts = [];
+  const logo = prof ? await imageData(prof.LOGO_FILE_ID) : '';
+  const ctx = { doc, logo, prof: prof || {} };
+  const PW = 420, PH = 297, M0 = 12;
+  let y = pdfKop(ctx, 12, 420);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('JADWAL PELAKSANAAN (GANTT CHART)', PW / 2, y, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.text(`${M.p.NAMA} · ${fmtDateLong(M.sched.mulai)} – ${fmtDateLong(M.sched.selesai)} · ${M.sched.durasiKerja} hari kerja`, PW / 2, y + 5, { align: 'center' });
+  y += 10;
+  const LW = 95, TX = M0 + LW, TW = PW - M0 - TX, days = Calc.daysBetween(M.start, M.sched.selesai) + 1, sc = TW / days;
+  const rowsList = []; M.groups.forEach(g => rowsList.push(g));
+  const rh = Math.min(7, (PH - y - 30) / Math.max(1, rowsList.length + 1));
+  // header bulan & minggu
+  doc.setFontSize(7);
+  for (let i = 0; i < days;) {
+    const dt = Calc.parseYmd(Calc.addDays(M.start, i)), nm = Calc.ymd(new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 1)));
+    const span = Math.min(days, Calc.daysBetween(M.start, nm)) - i;
+    doc.setFillColor(...hexRgb(THEME.primary)); doc.rect(TX + i * sc, y, span * sc, 5, 'F');
+    doc.setTextColor(255); if (span * sc > 12) doc.text(`${BULAN[dt.getUTCMonth()].slice(0, 3)} ${dt.getUTCFullYear()}`, TX + i * sc + 1.5, y + 3.5);
+    i += span;
+  }
+  doc.setFillColor(...hexRgb(THEME.primary)); doc.rect(M0, y, LW, 5, 'F'); doc.text('Pekerjaan', M0 + 2, y + 3.5);
+  y += 5; doc.setTextColor(...hexRgb(THEME.muted));
+  for (let w = 0; w * 7 < days; w++) { doc.setDrawColor(...hexRgb(THEME.border)); doc.line(TX + w * 7 * sc, y, TX + w * 7 * sc, y + rh * rowsList.length + 4); if (7 * sc > 6) doc.text('M' + (w + 1), TX + w * 7 * sc + 0.8, y + 3); }
+  y += 4;
+  rowsList.forEach((g, i) => {
+    const r = M.sched.tasks[g.row.ID], yy = y + i * rh;
+    if (i % 2) { doc.setFillColor(...hexRgb(THEME.zebra)); doc.rect(M0, yy, PW - 2 * M0, rh, 'F'); }
+    doc.setTextColor(...hexRgb(THEME.text)); doc.setFontSize(7.5);
+    doc.text(doc.splitTextToSize(`${g.row.KODE || ''} ${g.row.URAIAN}`, LW - 22)[0], M0 + 1.5, yy + rh * 0.65);
+    if (r) {
+      doc.setTextColor(...hexRgb(THEME.muted)); doc.text(`${r.dur}h`, M0 + LW - 2, yy + rh * 0.65, { align: 'right' });
+      const col = r.span ? THEME.accent : r.critical ? THEME.danger : THEME.primary;
+      doc.setFillColor(...hexRgb(col)); doc.roundedRect(TX + Calc.daysBetween(M.start, r.mulai) * sc, yy + rh * 0.2, Math.max(0.8, (Calc.daysBetween(r.mulai, r.selesai) + 1) * sc), rh * 0.6, 0.6, 0.6, 'F');
+      const pc = M.pctDiv(g, Math.max(1, M.lastData));
+      if (pc > 0 && !r.span) { doc.setFillColor(...hexRgb(THEME.success)); doc.rect(TX + Calc.daysBetween(M.start, r.mulai) * sc, yy + rh * 0.7, (Calc.daysBetween(r.mulai, r.selesai) + 1) * sc * Math.min(100, pc) / 100, rh * 0.12, 'F'); }
+    }
+  });
+  const yEnd = y + rowsList.length * rh;
+  autoMilestones(M).concat(msRows(M.p.ID).map(r => ({ nama: r.NAMA, tanggal: r.TANGGAL }))).forEach(m => {
+    if (!m.tanggal) return; const mx = TX + (Calc.daysBetween(M.start, m.tanggal) + 0.5) * sc;
+    doc.setFillColor(...hexRgb(THEME.accent)); doc.triangle(mx, yEnd + 1, mx - 1.5, yEnd + 3.5, mx + 1.5, yEnd + 3.5, 'F');
+    doc.setFontSize(6); doc.setTextColor(...hexRgb(THEME.text)); doc.text(m.nama, mx, yEnd + 6, { align: 'center' });
+  });
+  doc.setFontSize(7); doc.setTextColor(...hexRgb(THEME.muted));
+  doc.text('Merah = jalur kritis · Biru = normal · Oranye = SMKK (sepanjang proyek) · Hijau tipis = progres aktual · Segitiga = milestone', M0, yEnd + 11);
+  // halaman 2: Kurva S
+  doc.addPage('a3', 'landscape');
+  doc.setTextColor(...hexRgb(THEME.text)); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('KURVA S — RENCANA vs AKTUAL', PW / 2, 18, { align: 'center' });
+  const gx = 30, gy = 28, gw = 250, gh = 150, n = M.kurva.length;
+  const X = i => gx + i / n * gw, Y = v => gy + (1 - v / 100) * gh;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+  [0, 25, 50, 75, 100].forEach(v => { doc.setDrawColor(...hexRgb(THEME.border)); doc.line(gx, Y(v), gx + gw, Y(v)); doc.setTextColor(...hexRgb(THEME.muted)); doc.text(v + '%', gx - 2, Y(v) + 1, { align: 'right' }); });
+  M.kurva.forEach((k, i) => { if (n <= 30 || (i + 1) % Math.ceil(n / 30) === 0) doc.text('M' + k.minggu, X(i + 1), gy + gh + 5, { align: 'center' }); });
+  doc.setLineWidth(0.7); doc.setDrawColor(...hexRgb(THEME.primary));
+  let px = X(0), py = Y(0); M.kurva.forEach((k, i) => { doc.line(px, py, X(i + 1), Y(k.kum)); px = X(i + 1); py = Y(k.kum); });
+  if (M.lastData) { doc.setDrawColor(...hexRgb(THEME.accent)); px = X(0); py = Y(0); for (let w = 1; w <= Math.min(n, M.lastData); w++) { const a = Math.min(100, M.actualCum(w)); doc.line(px, py, X(w), Y(a)); px = X(w); py = Y(a); } }
+  doc.setLineWidth(0.2);
+  doc.setTextColor(...hexRgb(THEME.text)); doc.setFontSize(8); doc.text('Biru = rencana · Oranye = aktual', gx, gy + gh + 11);
+  doc.autoTable(AT({ startY: 28, margin: { left: 295, right: 12 }, styles: { fontSize: 7, cellPadding: 1 }, head: [['Mgg', 'Rencana', 'Kum', 'Aktual', 'Dev']], body: M.kurva.map(k => { const has = k.minggu <= M.lastData, a = has ? M.actualCum(k.minggu) : null; return [k.minggu, N(k.rencana, 2), N(k.kum, 2), has ? N(a, 2) : '-', has ? N(a - k.kum, 2) : '-']; }), columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } }));
+  pdfFooterA3(ctx, `Jadwal ${M.p.KODE}`);
+  await deliverPdf(doc, `${M.p.KODE}_JADWAL_${todayStr().replace(/-/g, '')}.pdf`, { proyekId: M.p.ID, kategori: '03_Jadwal', jenis: 'JADWAL', terkait: M.p.ID, shareText: `Jadwal ${M.p.NAMA}: ${fmtDateLong(M.sched.mulai)} – ${fmtDateLong(M.sched.selesai)}` });
+}
+function pdfFooterA3(ctx, docNo) {
+  const { doc, prof } = ctx, n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(7.5); doc.setTextColor(...hexRgb(THEME.muted)); doc.text([prof.NAMA, docNo].filter(Boolean).join('  ·  '), 12, 290); doc.text(`Halaman ${i} dari ${n}`, 408, 290, { align: 'right' }); if (norm(setting('TAMPIL_CREDIT')) === 'YA') doc.text('dibuat dengan RAB Rumah & Gedung by DG', 210, 293, { align: 'center' }); }
+}
+async function exportLaporanPdf(M, w) {
+  const R = weekReport(M, w), prof = profilOf(M.p.PROFIL_ID), ctx = await pdfStart(prof), doc = ctx.doc;
+  const head = progRows(M.p.ID).find(r => r.ITEM_ID === '_MINGGU' && num(r.MINGGU_KE) === w) || {};
+  let y = pdfKop(ctx);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(`LAPORAN PROGRES MINGGU KE-${w}`, 105, y + 2, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.text(`${M.p.NAMA} · periode ${fmtDateLong(R.ws)} – ${fmtDateLong(R.we)}`, 105, y + 8, { align: 'center' });
+  doc.autoTable(AT({ startY: y + 12, theme: 'plain', styles: { fontSize: 9.5, cellPadding: 1.2 }, columnStyles: { 0: { cellWidth: 55, textColor: hexRgb(THEME.muted) } }, body: [['Rencana kumulatif', pct(R.plan, 2)], ['Aktual kumulatif', pct(R.act, 2)], ['Deviasi', (R.dev > 0 ? '+' : '') + N(R.dev, 2) + '%'], ['Status', R.st[0]], ['Rencana selesai', fmtDateLong(M.sched.selesai)], ['Estimasi selesai (laju aktual)', estimasiSelesai(M) || '-']] }));
+  doc.autoTable(AT({ startY: doc.lastAutoTable.finalY + 4, head: [['Pekerjaan', 'Bobot', 'Rencana', 'Aktual', 'Selisih']], body: M.groups.filter(g => M.bobot[g.row.ID] > 0).map(g => { const r = M.sched.tasks[g.row.ID], pp = r ? Calc.planPct(r, w, M.start, M.cal) : 0, ap = M.pctDiv(g, w); return [`${g.row.KODE || ''} ${g.row.URAIAN}`, pct(M.bobot[g.row.ID] * 100, 2), pct(pp, 0), pct(ap, 0), N(ap - pp, 0) + '%']; }), columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } }));
+  let yy = doc.lastAutoTable.finalY + 6;
+  const sect = (t, txtv) => { if (!txtv) return; if (yy > 260) { doc.addPage(); yy = 20; } doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text(t, 15, yy); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); const l = doc.splitTextToSize(txtv, 180); doc.text(l, 15, yy + 5); yy += 7 + l.length * 4.2; };
+  sect('Pekerjaan terlambat', R.late.map(x => `• ${x.g.row.URAIAN} (rencana ${N(x.pp, 0)}%, aktual ${N(x.ap, 0)}%)`).join('\n') || 'Tidak ada.');
+  sect('Mulai / selesai minggu ini', `Mulai: ${R.mulai.map(g => g.row.URAIAN).join(', ') || '-'}\nSelesai: ${R.selesai.map(g => g.row.URAIAN).join(', ') || '-'}`);
+  sect('Catatan lapangan', head.CATATAN || '');
+  const fotos = String(head.FOTO || '').split('\n').filter(Boolean);
+  if (fotos.length) sect('Foto dokumentasi (Google Drive)', fotos.map((u, i) => `Foto ${i + 1}: ${u}`).join('\n'));
+  signBlock(doc, Math.max(yy + 6, 220), [{ title: 'Dibuat oleh', name: prof && prof.PJ_NAMA, role: prof && prof.PJ_JABATAN }, { title: 'Diperiksa oleh' }, { title: 'Mengetahui', name: M.p.PEMILIK }]);
+  pdfFooter(ctx, `Progres M${w} ${M.p.KODE}`, norm(setting('TAMPIL_CREDIT')) === 'YA');
+  await deliverPdf(doc, `${M.p.KODE}_PROGRES_M${String(w).padStart(2, '0')}_${todayStr().replace(/-/g, '')}.pdf`, { proyekId: M.p.ID, kategori: '06_Progres', jenis: 'LAPORAN_PROGRES', terkait: M.p.ID, shareText: `Laporan progres minggu ${w} ${M.p.NAMA}: aktual ${pct(R.act, 1)} vs rencana ${pct(R.plan, 1)} (${R.st[0]})` });
 }
 /* ============================================================
  * Start aplikasi

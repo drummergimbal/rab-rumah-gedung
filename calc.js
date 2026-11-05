@@ -23,7 +23,11 @@ var Calc = (function () {
 
   /* ---------- Index data master ---------- */
   function buildIndex(tables) {
-    var idx = { hsd: {}, ahsp: {}, komp: {}, usage: {} };
+    var idx = { hsd: {}, ahsp: {}, komp: {}, usage: {}, acuan: {} };
+    (tables.WILAYAH || []).forEach(function (r) {
+      if (isDel(r) || !r.NAMA || !r.ACUAN) return;
+      idx.acuan[norm(r.NAMA)] = String(r.ACUAN).split(/[,;]/).map(norm).filter(String);
+    });
     ['HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT'].forEach(function (t) {
       (tables[t] || []).forEach(function (r) {
         if (isDel(r) || !r.KODE_HSD) return;
@@ -53,27 +57,27 @@ var Calc = (function () {
 
   /* ---------- Harga dasar per wilayah & tahun ----------
    * Prioritas: wilayah & tahun sama → wilayah sama tahun terdekat (<= tahun, lalu terbaru)
-   * → wilayah lain tahun terbaru (ditandai fallback). Harga 0/kosong = belum ada harga. */
+   * → wilayah ACUAN (urut sesuai daftar di tabel WILAYAH) → wilayah lain tahun terbaru.
+   * Selain wilayah & tahun sama, hasil ditandai fallback. Harga 0/kosong = belum ada harga. */
   function hsdPrice(idx, kode, wilayah, tahun) {
     var rows = (idx.hsd[norm(kode)] || []).filter(function (r) { return num(r.HARGA) > 0; });
     if (!rows.length) return { harga: 0, row: (idx.hsd[norm(kode)] || [])[0] || null, status: 'KOSONG' };
     var w = norm(wilayah), t = num(tahun);
-    var same = rows.filter(function (r) { return norm(r.WILAYAH) === w; });
-    var pick = null, status = 'OK';
-    if (same.length) {
-      var exact = same.filter(function (r) { return num(r.TAHUN) === t; });
-      if (exact.length) pick = exact[0];
-      else {
-        var older = same.filter(function (r) { return num(r.TAHUN) <= t; })
-          .sort(function (a, b) { return num(b.TAHUN) - num(a.TAHUN); });
-        pick = older[0] || same.sort(function (a, b) { return num(b.TAHUN) - num(a.TAHUN); })[0];
-        status = 'TAHUN_LAIN';
-      }
-    } else {
-      pick = rows.slice().sort(function (a, b) { return num(b.TAHUN) - num(a.TAHUN); })[0];
-      status = 'WILAYAH_LAIN';
+    function best(list) {
+      var exact = list.filter(function (r) { return num(r.TAHUN) === t; });
+      if (exact.length) return { r: exact[0], same: true };
+      var older = list.filter(function (r) { return num(r.TAHUN) <= t; }).sort(function (a, b) { return num(b.TAHUN) - num(a.TAHUN); });
+      return { r: older[0] || list.slice().sort(function (a, b) { return num(b.TAHUN) - num(a.TAHUN); })[0], same: false };
     }
-    return { harga: num(pick.HARGA), row: pick, status: status };
+    var same = rows.filter(function (r) { return norm(r.WILAYAH) === w; });
+    if (same.length) { var b0 = best(same); return { harga: num(b0.r.HARGA), row: b0.r, status: b0.same ? 'OK' : 'TAHUN_LAIN' }; }
+    var acuan = (idx.acuan && idx.acuan[w]) || [];
+    for (var i = 0; i < acuan.length; i++) {
+      var ac = rows.filter(function (r) { return norm(r.WILAYAH) === acuan[i]; });
+      if (ac.length) { var b1 = best(ac); return { harga: num(b1.r.HARGA), row: b1.r, status: 'WILAYAH_ACUAN' }; }
+    }
+    var pick = rows.slice().sort(function (a, b) { return num(b.TAHUN) - num(a.TAHUN); })[0];
+    return { harga: num(pick.HARGA), row: pick, status: 'WILAYAH_LAIN' };
   }
 
   /* ---------- Analisa AHSP ----------

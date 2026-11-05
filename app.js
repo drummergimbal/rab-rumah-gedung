@@ -3,7 +3,7 @@
  * RAB + AHSP/HSD + Master + Import + Profil + Penawaran + PDF ke Drive
  * ============================================================ */
 'use strict';
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.4.0';
 const TABLES = ['PROYEK', 'DIVISI', 'RAB_ITEM', 'VOLUME_DETAIL', 'REVISI', 'REVISI_ITEM', 'AHSP_HEADER', 'AHSP_KOMPONEN', 'AHSP_VERSI',
   'HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT', 'WILAYAH', 'PENGATURAN', 'PROFIL_USAHA', 'TEMPLATE_SYARAT', 'IMPORT_MAPPING',
   'PENAWARAN', 'PENAWARAN_ITEM', 'FILES', 'JADWAL', 'TENAGA_REKAP', 'BORONGAN_UPAH', 'TERMIN_UPAH', 'PROGRES', 'LIBUR', 'MILESTONE',
@@ -970,7 +970,7 @@ function itemEditor(p, it) {
 }
 function analisaTable(a, ctx) {
   if (!a || !a.ok) return '';
-  const st = { OK: '', TAHUN_LAIN: badge('tahun lain', 'warning'), WILAYAH_LAIN: badge('wilayah lain', 'warning'), KOSONG: badge('harga kosong', 'danger') };
+  const st = { OK: '', TAHUN_LAIN: badge('tahun lain', 'warning'), WILAYAH_ACUAN: badge('wilayah acuan', 'info'), WILAYAH_LAIN: badge('wilayah lain', 'warning'), KOSONG: badge('harga kosong', 'danger') };
   const grp = j => a.rows.filter(r => r.jenis === j);
   const sect = (j, label, sum) => grp(j).length ? `<tr class="div"><td colspan="5">${label}</td><td class="num">${rpCell(sum)}</td></tr>` + grp(j).map(r => `<tr><td>${esc(r.kodeHsd)}</td><td>${esc(r.nama)} ${st[r.status] || ''}</td><td>${esc(r.satuan)}</td><td class="num">${Nmax(r.koef, 4)}</td><td class="num">${rpCell(r.hargaDasar)}</td><td class="num">${rpCell(r.jumlah)}</td></tr>`).join('') : '';
   return `<div class="table-wrap" style="margin-top:10px"><table class="t"><thead><tr><th>Kode</th><th>Komponen</th><th>Sat</th><th class="num">Koefisien</th><th class="num">Harga dasar</th><th class="num">Jumlah</th></tr></thead><tbody>
@@ -1402,6 +1402,7 @@ function hsdEditor(t, r, onDone) {
 const AHSP_COLS = ['KODE_AHSP', 'URAIAN', 'SATUAN', 'DIVISI', 'JENIS_KOMPONEN', 'KODE_HSD', 'NAMA_KOMPONEN', 'SATUAN_KOMPONEN', 'KOEFISIEN', 'SUMBER'];
 function mImport(el) {
   el.innerHTML = `<div class="grid md2">
+    ${resmiCard()}
     <div class="card"><h3>Import library AHSP</h3><p class="small muted" style="margin-top:0">CSV / Excel dengan kolom:<br><code style="font-size:11px">${AHSP_COLS.join(' | ')}</code><br>Satu baris = satu komponen. Header AHSP diambil dari baris pertama tiap KODE_AHSP. JENIS_KOMPONEN: Upah / Bahan / Alat.</p>
       <div class="row"><label class="btn primary">Pilih file<input type="file" id="fA" accept=".csv,.xlsx,.xls" hidden></label><button class="btn ghost" id="tA">Unduh template</button></div></div>
     <div class="card"><h3>Import harga dasar (HSD)</h3><p class="small muted" style="margin-top:0">Dari HSPK/SSH Pemda, survei toko, atau penawaran vendor. Kolom bebas, nanti dipetakan. Nama bahan dicocokkan otomatis ke kode HSD lewat kode/nama/sinonim.</p>
@@ -1411,6 +1412,7 @@ function mImport(el) {
   $('#tA', el).onclick = async () => { const X = await needXlsx(); const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([AHSP_COLS, ['A.2.2.1.1', 'Galian tanah biasa sedalam 1 m', 'm3', 'PEKERJAAN TANAH', 'Upah', 'L.01', 'Pekerja', 'OH', 0.75, 'Lampiran Permen PUPR 8/2023 hal. …'], ['A.2.2.1.1', '', '', '', 'Upah', 'L.04', 'Mandor', 'OH', 0.025, '']]), 'AHSP'); X.writeFile(wb, 'TEMPLATE_IMPORT_AHSP.xlsx'); };
   $('#tH', el).onclick = async () => { const X = await needXlsx(); const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['KODE_HSD', 'NAMA', 'SATUAN', 'HARGA', 'JENIS'], ['L.01', 'Pekerja', 'OH', 120000, 'Upah'], ['M.15', 'Semen Portland', 'kg', 1500, 'Bahan']]), 'HSD'); X.writeFile(wb, 'TEMPLATE_IMPORT_HSD.xlsx'); };
   $('#fA', el).onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) importAhsp(await readTable(f), f.name); };
+  $('#rsImp', el) && ($('#rsImp', el).onclick = importResmi);
   $('#fH', el).onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) importHsd(await readTable(f), f.name); };
   $('#xL', el).onclick = exportLibrary;
 }
@@ -1684,7 +1686,7 @@ function mSetting(el) {
       ${inp('TERMIN_DEFAULT', 'Skema termin default', s.TERMIN_DEFAULT, { cls: 'span2' })}
       <label class="check span2"><input type="checkbox" name="TAMPIL_CREDIT" ${norm(s.TAMPIL_CREDIT) === 'YA' ? 'checked' : ''}> Tampilkan "dibuat dengan RAB Rumah & Gedung by DG" kecil di dokumen</label>
       </form><datalist id="wl3">${rows('WILAYAH').map(w => `<option value="${esc(w.NAMA)}">`).join('')}</datalist><button class="btn primary" id="sSave" style="margin-top:12px">Simpan default</button></div>
-    <div class="card"><h3>Wilayah harga</h3><div class="list">${rows('WILAYAH').map(w => `<div class="li"><div class="main"><div class="t1">${esc(w.NAMA)}</div><div class="t2">${esc(w.PROVINSI || '')}</div></div><button class="btn sm ghost" data-delw="${w.ID}">Hapus</button></div>`).join('')}</div>
+    <div class="card"><h3>Wilayah harga</h3><p class="small muted" style="margin-top:0">Bila harga dasar suatu wilayah belum ada, aplikasi memakai <strong>wilayah acuan</strong> (ditandai di analisa).</p><div class="list">${rows('WILAYAH').map(w => { const n = hsdAll().filter(r => norm(r.WILAYAH) === norm(w.NAMA)).length; return `<div class="li"><div class="main"><div class="t1">${esc(w.NAMA)} <span class="small muted">· ${N(n)} harga dasar</span></div><div class="t2">${esc(w.PROVINSI || '')}${w.ACUAN ? ' · acuan: ' + esc(w.ACUAN) : ''}${w.KETERANGAN ? '<br>' + esc(w.KETERANGAN) : ''}</div></div><button class="btn sm" data-acw="${w.ID}">Acuan</button><button class="btn sm ghost" data-delw="${w.ID}">Hapus</button></div>`; }).join('')}</div>
       <div class="row" style="margin-top:8px"><input class="input" id="wNew" placeholder="mis. Kota Depok" style="flex:1"><input class="input" id="wProv" placeholder="Provinsi" style="flex:1"><button class="btn" id="wAdd">Tambah</button></div></div>
     <div class="card"><h3>Template syarat & ketentuan</h3><div class="list">${rows('TEMPLATE_SYARAT').sort((a, b) => num(a.URUTAN) - num(b.URUTAN)).map(t => `<div class="li"><div class="main"><div class="t1">${esc(t.JUDUL)} ${badge(t.JENIS, 'primary')}</div><div class="t2" style="white-space:pre-line">${esc(String(t.ISI).slice(0, 120))}${String(t.ISI).length > 120 ? '…' : ''}</div></div><button class="btn sm" data-ts="${t.ID}">Ubah</button></div>`).join('')}</div></div>
     <div class="card"><h3>Data contoh</h3><p class="small muted" style="margin-top:0">${rows('AHSP_HEADER').filter(h => norm(h.VERSI) === 'CONTOH').length} AHSP & ${hsdAll().filter(r => String(r.SUMBER || '').includes('CONTOH')).length} harga dasar berlabel CONTOH (bukan data resmi). Hapus setelah library resmi di-import.</p><button class="btn danger" id="delC" style="border:1px solid var(--danger)">Hapus semua data CONTOH</button></div>
@@ -1702,6 +1704,12 @@ function mSetting(el) {
   $('#sSave', el).onclick = () => { const d = formData($('#sf', el)); Object.entries(d).forEach(([k, v]) => setSetting(k, v)); toast('Default disimpan', 'ok'); };
   $('#wAdd', el).onclick = () => { const n = $('#wNew', el).value.trim(); if (!n) return; save('WILAYAH', { ID: uid('W'), NAMA: n, PROVINSI: $('#wProv', el).value.trim(), AKTIF: 'YA' }); rerenderSoft(); };
   $$('[data-delw]', el).forEach(b => b.onclick = () => { remove('WILAYAH', b.dataset.delw); rerenderSoft(); });
+  $$('[data-acw]', el).forEach(b => b.onclick = () => {
+    const w = getRow('WILAYAH', b.dataset.acw), cur = String(w.ACUAN || '').split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    openModal({ title: 'Wilayah acuan · ' + w.NAMA, body: `<p class="small muted" style="margin-top:0">Dipakai urut dari atas bila harga dasar ${esc(w.NAMA)} untuk suatu komponen belum ada.</p><div class="chips">${rows('WILAYAH').filter(x => x.ID !== w.ID).map(x => `<label class="check"><input type="checkbox" data-ac="${esc(x.NAMA)}" ${cur.includes(x.NAMA) ? 'checked' : ''}> ${esc(x.NAMA)}</label>`).join('')}</div>`,
+      foot: '<button class="btn" data-close>Batal</button><button class="btn primary" id="acOk">Simpan</button>',
+      onOpen: (e2, m2) => { $('#acOk', e2).onclick = () => { const sel = $$('[data-ac]', e2).filter(c => c.checked).map(c => c.dataset.ac); const ord = cur.filter(x => sel.includes(x)).concat(sel.filter(x => !cur.includes(x))); save('WILAYAH', { ID: w.ID, ACUAN: ord.join(', ') }); m2.close(); rerenderSoft(); }; } });
+  });
   $$('[data-ts]', el).forEach(b => b.onclick = () => {
     const t = getRow('TEMPLATE_SYARAT', b.dataset.ts);
     openModal({ title: 'Ubah template · ' + t.JUDUL, body: `<div class="form-grid">${inp('JUDUL', 'Judul', t.JUDUL)}${txt('ISI', 'Isi (satu poin per baris)', t.ISI, { rows: 8 })}</div>`, foot: `<button class="btn" data-close>Batal</button><button class="btn primary" id="tsOk">Simpan</button>`, onOpen: (e2, m2) => { $('#tsOk', e2).onclick = () => { save('TEMPLATE_SYARAT', Object.assign({ ID: t.ID }, formData(e2))); m2.close(); rerenderSoft(); }; } });
@@ -3593,6 +3601,88 @@ async function importProjectFile(file) {
     const r = importBundle(b, { suffix: exists ? ' (import)' : '' });
     S.meta.activeProject = r.pid; saveMeta(); toast(`Proyek diimpor (${r.n} baris)`, 'ok'); location.hash = `#/rab/${r.pid}`;
   } catch (e) { toast('Gagal import: ' + e.message, 'err'); }
+}
+/* ============================================================
+ * Impor AHSP resmi (SE DJBK No. 47/SE/Dk/2026, Lampiran VI
+ * Cipta Karya) + harga dasar 2026 beberapa wilayah.
+ * Data hasil olahan tersimpan di /data/*.json (bagian aplikasi).
+ * ID baris tetap → impor ulang memperbarui, tidak menggandakan.
+ * ============================================================ */
+const RESMI_URL = 'data/ahsp-se47-2026.json';
+/* simpan massal: cepat untuk ribuan baris, baris yang tidak berubah dilewati */
+function bulkUpsert(t, list) {
+  const arr = S.t[t] = S.t[t] || [];
+  const pos = new Map(arr.map((r, i) => [r.ID, i]));
+  const now = nowIso(); let n = 0;
+  list.forEach(row => {
+    const i = pos.get(row.ID);
+    if (i !== undefined && !Calc.isDel(arr[i]) && !diff(arr[i], row)) return;
+    const base = i !== undefined ? arr[i].UPDATED_AT : '';
+    const merged = Object.assign({}, i !== undefined ? arr[i] : {}, row, { DELETED: '', UPDATED_AT: now });
+    if (i !== undefined) arr[i] = merged; else { pos.set(row.ID, arr.length); arr.push(merged); }
+    const key = t + '|' + row.ID, prev = S.queue[key];
+    S.queue[key] = { table: t, row: merged, base: prev ? prev.base : base };
+    n++;
+  });
+  if (n) markDirty(t);
+  return n;
+}
+function resmiCard() {
+  const have = rows('AHSP_HEADER').filter(h => norm(h.VERSI) === 'SE47-2026').length;
+  return `<div class="card"><h3>AHSP resmi SE 47/2026 + harga 2026</h3>
+    <p class="small muted" style="margin-top:0">AHSP Bidang Cipta Karya dari <strong>SE Dirjen Bina Konstruksi No. 47/SE/Dk/2026</strong> (Lampiran VI): ±2.480 analisa, ±13.250 koefisien. Harga dasar 2026 resmi untuk <strong>DKI Jakarta</strong> (Bangun Jakarta) serta <strong>Kota Semarang</strong> & <strong>Kota Surakarta</strong> (MAS PETRUK Jateng). Kab./Kota Bogor & Depok memakai acuan DKI, Kota Yogyakarta acuan Surakarta — sampai harga setempat diisi.</p>
+    ${have ? `<div class="notice success" style="margin-bottom:10px">${N(have)} AHSP SE 47/2026 sudah terpasang. Impor ulang hanya memperbarui yang berubah.</div>` : ''}
+    <button class="btn primary" id="rsImp">${have ? 'Perbarui' : 'Impor'} AHSP resmi & harga</button></div>`;
+}
+async function importResmi() {
+  if (!isOwner()) return toast(roleMsg(), 'err');
+  let d;
+  try { toast('Memuat data resmi…'); d = await fetch(RESMI_URL, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); }
+  catch (e) { return toast('Gagal memuat data: ' + e.message, 'err'); }
+  const nK = Object.values(d.komponen).reduce((a, l) => a + l.length, 0);
+  const nH = d.hsd.filter(h => h[7] !== '').length;
+  const ok = await confirmBox(`${d.judul}\n\n• ${N(d.ahsp.length)} AHSP, ${N(nK)} baris koefisien\n• ${N(nH)} harga dasar 2026 (${d.wilayah.filter(w => !w.ACUAN || /Semarang|Surakarta/.test(w.NAMA)).map(w => w.NAMA).join(', ')})\n• ${N(d.hsd.length - nH)} komponen ditandai PERLU HARGA\n• Wilayah acuan: ${d.wilayah.filter(w => w.ACUAN && !/Semarang|Surakarta/.test(w.NAMA)).map(w => w.NAMA + ' → ' + w.ACUAN.split(',')[0]).join('; ')}\n\nData CONTOH lama tidak dihapus otomatis. Pengiriman ke Google Sheet bisa 5–15 menit — biarkan aplikasi tetap terbuka.`, { ok: 'Impor sekarang' });
+  if (!ok) return;
+  const tgl = '2026-02-20';
+  const H = d.ahsp.map(([k, u, s, dv, ref, src, dasar]) => ({ ID: 'SE47-H-' + k, KODE_AHSP: k, URAIAN: u, SATUAN: s, DIVISI: dv, JENIS: 'RESMI', KODE_REFERENSI: ref, SUMBER: src, DASAR_PERHITUNGAN: dasar, SCOPE: 'UMUM', PROYEK_ID: '', VERSI: 'SE47-2026', STATUS: 'TERVERIFIKASI', DIBUAT_OLEH: 'Impor SE 47/2026', TANGGAL: tgl }));
+  const K = [];
+  Object.entries(d.komponen).forEach(([k, list]) => list.forEach(([j, hsd, nama, sat, koef], i) => K.push({ ID: `SE47-K-${k}-${i + 1}`, KODE_AHSP: k, URUTAN: i + 1, JENIS_KOMPONEN: { U: 'Upah', B: 'Bahan', A: 'Alat' }[j], KODE_HSD: hsd, NAMA_KOMPONEN: nama, SATUAN: sat, KOEFISIEN: koef })));
+  const HS = { HSD_UPAH: [], HSD_BAHAN: [], HSD_ALAT: [] };
+  d.hsd.forEach(([t, id, kode, nama, sat, wil, th, harga, src, st]) => HS[t].push({ ID: id, KODE_HSD: kode, NAMA: nama, SATUAN: sat, WILAYAH: wil, TAHUN: th, HARGA: harga, SUMBER: src, STATUS: st, TANGGAL_UPDATE: '2026-11-06' }));
+  let n = 0;
+  n += bulkUpsert('AHSP_HEADER', H); n += bulkUpsert('AHSP_KOMPONEN', K);
+  Object.entries(HS).forEach(([t, l]) => { n += bulkUpsert(t, l); });
+  // wilayah + acuan (wilayah yang sudah ada dipertahankan ID-nya)
+  d.wilayah.forEach(w => { const ex = rows('WILAYAH').find(x => norm(x.NAMA) === norm(w.NAMA)); n += bulkUpsert('WILAYAH', [Object.assign({ ID: ex ? ex.ID : 'W-' + w.NAMA.toUpperCase().replace(/[^A-Z]+/g, '-'), AKTIF: 'YA' }, w)]); });
+  // catat versi library
+  n += bulkUpsert('AHSP_VERSI', [{ ID: 'VERSI-SE47-2026', VERSI: 'SE47-2026', SUMBER: d.sumber_ahsp, TANGGAL: tgl, JUMLAH_AHSP: d.ahsp.length, JUMLAH_KOMPONEN: nK, CATATAN: 'Impor otomatis dari data aplikasi ' + d.dibuat }]);
+  S.idx = null;
+  await new Promise(r => setTimeout(r, 400));
+  if (!n) return toast('Data sudah terbaru — tidak ada perubahan', 'ok');
+  if (norm(setting('VERSI_AHSP_AKTIF')) === 'CONTOH') setSetting('VERSI_AHSP_AKTIF', 'SE47-2026');
+  syncProgress(n);
+}
+/* kirim antrean besar ke Sheet dengan tampilan progres */
+function syncProgress(total) {
+  let stop = false;
+  openModal({
+    title: 'Mengirim ke Google Sheet',
+    body: `<p style="margin-top:0">${N(total)} baris diperbarui di perangkat ini. Sedang dikirim ke Google Sheet…</p><div class="bar"><span id="spBar" style="width:0%"></span></div><p class="small muted" id="spTxt" style="margin-bottom:0"></p>`,
+    foot: '<button class="btn" data-close>Lanjutkan di latar belakang</button>',
+    onOpen: (el, m) => {
+      const tick = () => {
+        if (stop) return;
+        const left = Object.keys(S.queue).length, done = Math.max(0, total - left);
+        $('#spBar', el).style.width = Math.min(100, done / total * 100) + '%';
+        $('#spTxt', el).textContent = left ? `${N(done)} dari ${N(total)} terkirim${S.lastError ? ' · ' + S.lastError : ''}` : 'Selesai ✅';
+        if (!left) { setTimeout(() => { m.close(); toast('AHSP resmi & harga 2026 tersimpan di Google Sheet', 'ok'); rerenderSoft(); }, 800); return; }
+        if (!S.syncing) sync();
+        setTimeout(tick, 1500);
+      };
+      tick();
+    },
+    onClose: () => { stop = true; }
+  });
 }
 /* ============================================================
  * Start aplikasi

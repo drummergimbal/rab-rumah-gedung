@@ -1,5 +1,5 @@
 /* RAB Rumah & Gedung — Service Worker (by DG) */
-const VERSION = 'rab-v1.3.1';
+const VERSION = 'rab-v1.4.0';
 const SHELL = [
   './', 'index.html', 'style.css', 'calc.js', 'app.js', 'manifest.json', 'favicon.ico',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon.svg', 'icons/apple-touch-icon.png',
@@ -23,6 +23,8 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (url.origin !== location.origin) return;
+  // Data library resmi (besar, jarang dipakai): selalu dari jaringan, tidak disimpan di cache
+  if (url.pathname.includes('/data/')) return;
   // Halaman: network-first (agar update cepat), fallback cache
   if (e.request.mode === 'navigate') {
     e.respondWith(fetch(e.request).then(res => { caches.open(VERSION).then(c => c.put('index.html', res.clone())); return res; }).catch(() => caches.match('index.html')));

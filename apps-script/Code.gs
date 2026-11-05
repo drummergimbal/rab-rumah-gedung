@@ -10,7 +10,7 @@
  * dan Sheet dibuka ulang. Jalankan "1. Setup Awal" sekali saja.
  * ============================================================ */
 
-var APP = { name: 'RAB Rumah & Gedung', version: '1.3.0', tz: 'Asia/Jakarta' };
+var APP = { name: 'RAB Rumah & Gedung', version: '1.4.0', tz: 'Asia/Jakarta' };
 
 var THEME = {
   primary: '#1F4E79', primaryDark: '#0E2A45', primary50: '#EAF2FA',
@@ -48,7 +48,7 @@ var SCHEMA = {
   HSD_UPAH: { group: 'MASTER', cols: ['KODE_HSD', 'NAMA', 'SATUAN', 'WILAYAH', 'TAHUN:num', 'HARGA:rp', 'SUMBER', 'SINONIM', 'STATUS', 'TANGGAL_UPDATE:date'] },
   HSD_BAHAN: { group: 'MASTER', cols: ['KODE_HSD', 'NAMA', 'SATUAN', 'WILAYAH', 'TAHUN:num', 'HARGA:rp', 'SUMBER', 'SINONIM', 'STATUS', 'TANGGAL_UPDATE:date'] },
   HSD_ALAT: { group: 'MASTER', cols: ['KODE_HSD', 'NAMA', 'SATUAN', 'WILAYAH', 'TAHUN:num', 'HARGA:rp', 'SUMBER', 'SINONIM', 'STATUS', 'TANGGAL_UPDATE:date'] },
-  WILAYAH: { group: 'MASTER', cols: ['NAMA', 'PROVINSI', 'AKTIF'] },
+  WILAYAH: { group: 'MASTER', cols: ['NAMA', 'PROVINSI', 'AKTIF', 'ACUAN', 'KETERANGAN'] },
   PENGATURAN: { group: 'MASTER', cols: ['NILAI', 'KETERANGAN'] },
   PROFIL_USAHA: { group: 'MASTER', cols: ['NAMA', 'BENTUK', 'TAGLINE', 'LOGO_FILE_ID', 'ALAMAT', 'KOTA', 'PROVINSI', 'KODE_POS', 'TELEPON', 'WHATSAPP', 'EMAIL', 'WEBSITE', 'INSTAGRAM', 'NPWP', 'PKP', 'NIB', 'BANK', 'NO_REKENING', 'ATAS_NAMA', 'PJ_NAMA', 'PJ_JABATAN', 'TTD_FILE_ID', 'STEMPEL_FILE_ID', 'TAMPILKAN_TTD', 'WARNA_AKSEN', 'IS_DEFAULT'] },
   TEMPLATE_SYARAT: { group: 'MASTER', cols: ['JENIS', 'JUDUL', 'ISI', 'URUTAN:num'] },
@@ -760,7 +760,7 @@ function validateKontrol_(byTable) {
 
 function validateRabItems_(items, incomingProjects) {
   var tables = {};
-  ['HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT', 'AHSP_HEADER', 'AHSP_KOMPONEN'].forEach(function (t) { tables[t] = readTable_(t); });
+  ['HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT', 'AHSP_HEADER', 'AHSP_KOMPONEN', 'WILAYAH'].forEach(function (t) { tables[t] = readTable_(t); });
   var idx = Calc.buildIndex(tables);
   var projects = {};
   readTable_('PROYEK').forEach(function (p) { projects[p.ID] = p; });

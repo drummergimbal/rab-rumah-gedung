@@ -9,9 +9,14 @@
   --radius: 12px; --shadow: 0 1px 2px rgba(15, 42, 69, .06);
   --nav-h: 64px; --head-h: 56px;
   --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px);
+  --gutter: 16px;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* ketuk 2x tidak memperbesar; teks tidak membesar sendiri saat layar diputar */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: hidden; }
+body { overflow-x: hidden; }
 body {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   font-size: 14px; line-height: 1.45; color: var(--text); background: var(--bg);
@@ -28,7 +33,7 @@ h1, h2, h3 { margin: 0; line-height: 1.25; }
 /* ---------- Header ---------- */
 .app-header {
   position: sticky; top: 0; z-index: 30; height: var(--head-h);
-  display: flex; align-items: center; gap: 10px; padding: 0 16px;
+  display: flex; align-items: center; gap: 10px; padding: 0 calc(var(--gutter) + var(--safe-r)) 0 calc(var(--gutter) + var(--safe-l));
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .app-header img { width: 32px; height: 32px; border-radius: 8px; }
@@ -47,7 +52,11 @@ h1, h2, h3 { margin: 0; line-height: 1.25; }
 @keyframes pulse { 50% { opacity: .3; } }
 
 /* ---------- Layout ---------- */
-main { max-width: 1120px; margin: 0 auto; padding: 16px 16px calc(var(--nav-h) + 32px + var(--safe-b)); }
+main { width: 100%; max-width: none; margin: 0; padding: 16px calc(var(--gutter) + var(--safe-r)) calc(var(--nav-h) + 32px + var(--safe-b)) calc(var(--gutter) + var(--safe-l)); }
+@media (min-width: 1200px) { :root { --gutter: 24px; } }
+@media (min-width: 1200px) { .grid.md2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* iPhone tidak auto-zoom saat mengetik bila ukuran huruf input ≥ 16px */
+@media (pointer: coarse) { .input, select.input, textarea.input, input, select, textarea { font-size: 16px; } }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 4px 0 16px; flex-wrap: wrap; }
 .page-head h2 { font-size: 20px; font-weight: 700; }
 .page-head h2::after { content: ''; display: block; width: 32px; height: 3px; border-radius: 2px; background: var(--accent); margin-top: 6px; }
@@ -178,6 +187,7 @@ table.t tr.clickable:hover td { background: var(--primary-50); }
 .bottom-nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: calc(var(--nav-h) + var(--safe-b)); padding-bottom: var(--safe-b);
   background: var(--surface); border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(5, 1fr);
+  padding-left: var(--safe-l); padding-right: var(--safe-r);
 }
 .bottom-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--text-muted); text-decoration: none; font-size: 11px; font-weight: 600; position: relative; }
 .bottom-nav a svg { width: 22px; height: 22px; }
@@ -219,7 +229,7 @@ table.t tr.clickable:hover td { background: var(--primary-50); }
 .bar.accent > span { background: var(--accent); }
 .bar.warning > span { background: var(--warning); }
 .bar.danger > span { background: var(--danger); }
-.role-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 16px; background: var(--accent-50); border-bottom: 1px solid var(--border); font-size: 13px; }
+.role-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px calc(16px + var(--safe-r)) 8px calc(16px + var(--safe-l)); background: var(--accent-50); border-bottom: 1px solid var(--border); font-size: 13px; }
 .role-bar a { margin-left: auto; font-weight: 600; }
 .nowrap { white-space: nowrap; }
 .warn-list .li .ico { color: var(--warning); }
@@ -272,3 +282,12 @@ table.t tr.clickable:hover td { background: var(--primary-50); }
 .g-key { display: inline-block; width: 14px; height: 8px; border-radius: 3px; background: var(--primary); margin: 0 3px 0 8px; vertical-align: middle; }
 .g-key.crit { background: var(--danger); } .g-key.span { background: var(--accent); opacity: .55; } .g-key.acc { background: var(--accent); }
 .g-key.ms { width: 8px; transform: rotate(45deg); background: var(--accent); } .g-key.now { width: 2px; height: 12px; background: var(--accent); }
+
+/* HP posisi landscape: header & menu bawah lebih ramping supaya area kerja lebih luas */
+@media (orientation: landscape) and (max-height: 520px) {
+  :root { --nav-h: 48px; --head-h: 48px; }
+  .bottom-nav a { flex-direction: row; gap: 6px; font-size: 12px; }
+  .bottom-nav a svg { width: 20px; height: 20px; }
+  .app-header .title .sub { display: none; }
+  .modal { max-height: 96vh; }
+}

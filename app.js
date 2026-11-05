@@ -3,7 +3,7 @@
  * RAB + AHSP/HSD + Master + Import + Profil + Penawaran + PDF ke Drive
  * ============================================================ */
 'use strict';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const TABLES = ['PROYEK', 'DIVISI', 'RAB_ITEM', 'VOLUME_DETAIL', 'REVISI', 'REVISI_ITEM', 'AHSP_HEADER', 'AHSP_KOMPONEN', 'AHSP_VERSI',
   'HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT', 'WILAYAH', 'PENGATURAN', 'PROFIL_USAHA', 'TEMPLATE_SYARAT', 'IMPORT_MAPPING',
   'PENAWARAN', 'PENAWARAN_ITEM', 'FILES', 'JADWAL', 'TENAGA_REKAP', 'BORONGAN_UPAH', 'TERMIN_UPAH', 'PROGRES', 'LIBUR', 'MILESTONE',
@@ -3622,4 +3622,35 @@ async function boot() {
     }).catch(() => { });
   }
 }
-document.addEventListener('DOMContentLoaded', boot);
+/* ============================================================
+ * Zoom: ketuk 2x dimatikan, cubit-perbesar boleh tapi saat jari
+ * dilepas tampilan kembali ke lebar penuh (skala 1)
+ * ============================================================ */
+function zoomGuard() {
+  const meta = document.querySelector('meta[name=viewport]'); if (!meta) return;
+  const base = 'width=device-width, initial-scale=1, viewport-fit=cover';
+  const vv = window.visualViewport;
+  let fingers = 0, resetting = false;
+  const reset = () => {
+    if (resetting || fingers > 0 || !vv || vv.scale <= 1.01) return;
+    resetting = true;
+    meta.setAttribute('content', base + ', minimum-scale=1, maximum-scale=1'); // paksa kembali ke skala 1
+    setTimeout(() => { meta.setAttribute('content', base); resetting = false; }, 400); // cubit boleh lagi
+  };
+  document.addEventListener('touchstart', e => { fingers = e.touches.length; }, { passive: true });
+  document.addEventListener('touchend', e => { fingers = e.touches.length; if (!fingers) setTimeout(reset, 80); }, { passive: true });
+  document.addEventListener('touchcancel', e => { fingers = e.touches.length; if (!fingers) setTimeout(reset, 80); }, { passive: true });
+  document.addEventListener('gestureend', () => setTimeout(reset, 80)); // Safari iOS
+  if (vv) vv.addEventListener('resize', debounce(reset, 250));
+  // cadangan untuk browser lama: ketuk 2x di area kosong tidak memperbesar (tombol/input tetap normal)
+  let last = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - last < 320 && !e.touches.length && !e.target.closest('button, a, input, textarea, select, label, [role=button], .clickable, tr[data-r], tr[data-c], tr[data-o]')) e.preventDefault();
+    last = now;
+  }, { passive: false });
+  document.addEventListener('dblclick', e => { if (!e.target.closest('input, textarea')) e.preventDefault(); }, { passive: false });
+  // setelah layar diputar: pastikan kembali lebar penuh & posisi kiri
+  window.addEventListener('orientationchange', () => setTimeout(() => { reset(); window.scrollTo({ left: 0, top: window.scrollY }); }, 300));
+}
+document.addEventListener('DOMContentLoaded', () => { zoomGuard(); boot(); });

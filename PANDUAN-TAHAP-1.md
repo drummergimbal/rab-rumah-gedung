@@ -278,3 +278,35 @@ Buka menu bawah **Jadwal**, atau tab **Jadwal** di halaman proyek.
 Dashboard sekarang juga menampilkan progres minggu berjalan dan daftar pekerjaan **"Minggu ini"** (mulai, selesai, dan yang terlambat).
 
 **Setelah update:** jalankan menu **RAB Rumah & Gedung → Perbarui Struktur Sheet**. Langkah ini menambah kolom TANGGAL_MULAI, data libur, dan pengaturan deviasi.
+
+---
+
+# Tahap 4 — Kontrol Proyek (v1.3.0)
+
+Menu **Lapangan** sekarang berisi 4 tab:
+
+| Tab | Isi |
+|---|---|
+| **Kontrol Biaya** | Anggaran vs realisasi per divisi (serapan %, sisa, status AMAN / WASPADA >90% / OVER BUDGET >100%), perbandingan % biaya vs % progres fisik, nilai kontrak & addendum, realisasi per kategori. Mode Gedung: estimasi eskalasi harga material. |
+| **Realisasi** | Catat setiap pengeluaran: tanggal, item/divisi RAB, kategori (bahan/upah/alat/lain), vendor, nominal, **foto nota** (kamera/galeri/PDF → dikompres → Drive `05_Nota`). |
+| **Tambah-Kurang** | CCO: pekerjaan tambah, kurang, atau ganti spesifikasi. Status DIAJUKAN → DISETUJUI/DITOLAK. Yang disetujui otomatis masuk **RAB addendum** & **nilai kontrak addendum**; RAB awal tetap jadi pembanding. Cetak berita acara → Drive `07_CCO`. |
+| **Opname & BAP** | Opname per termin: % progres terisi dari input progres mingguan (bisa diubah sesuai opname bersama). Tagihan = % progres × nilai kontrak − nilai yang sudah ditagih − retensi (default 5%). Cetak BAP → Drive `04_Opname-BAP`. Tombol **Cairkan retensi** di akhir masa pemeliharaan. |
+
+**Akses tim** (Master → Akses Tim, khusus Owner):
+1. Tambah anggota: nama, peran (**Pengawas** = isi progres & realisasi; **Viewer** = lihat saja), PIN minimal 6 digit, proyek yang boleh dibuka.
+2. Tekan **Undang** → kirim pesan WhatsApp berisi link. **PIN disampaikan terpisah.**
+3. Anggota membuka link, mengisi PIN, selesai — tanpa akses ke Google Sheet.
+4. Cabut akses: hapus centang **Aktif** → token anggota langsung tidak berlaku.
+Peran diperiksa di server (Apps Script), bukan hanya di tampilan.
+
+**Backup & duplikat** (tab Info proyek): Backup proyek (JSON, juga tersimpan di Drive `01_RAB`), Duplikat proyek (RAB + jadwal/tenaga). Import JSON di halaman daftar proyek.
+
+**Update Apps Script ke v1.3.0:** tempel `Code.gs` & `Calc.gs` baru → simpan → jalankan `upgradeSheets` (menambah sheet AKSES & kolom baru) → Deploy → Kelola deployment → Edit → Versi baru → Deploy (URL tetap sama).
+
+**Asumsi & batasan Tahap 4**
+- Anggaran per divisi = jumlah harga RAB (sudah termasuk biaya umum & keuntungan). Kontinjensi ditampilkan terpisah sebagai cadangan.
+- Nilai CCO di kontrak = nilai RAB × faktor kontrak awal (nilai kontrak ÷ nilai pekerjaan RAB), jadi markup/PPN penawaran ikut otomatis.
+- Progres pekerjaan tambah (CCO) belum punya bobot sendiri di Kurva S; sesuaikan % progres di opname bila perlu.
+- Uang muka (DP) belum dihitung terpisah di opname — catat di kolom catatan atau sesuaikan nilai tagihan termin pertama.
+- Eskalasi = estimasi internal (porsi bahan × %/tahun × jarak waktu), bukan rumus kontrak.
+- Pengawas & Viewer bisa melihat harga RAB internal. Jangan beri akses Viewer ke klien; kirim PDF penawaran.

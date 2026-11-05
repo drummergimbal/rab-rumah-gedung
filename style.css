@@ -217,6 +217,11 @@ table.t tr.clickable:hover td { background: var(--primary-50); }
 .bar { height: 8px; background: var(--zebra); border-radius: 999px; overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
 .bar.accent > span { background: var(--accent); }
+.bar.warning > span { background: var(--warning); }
+.bar.danger > span { background: var(--danger); }
+.role-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 16px; background: var(--accent-50); border-bottom: 1px solid var(--border); font-size: 13px; }
+.role-bar a { margin-left: auto; font-weight: 600; }
+.nowrap { white-space: nowrap; }
 .warn-list .li .ico { color: var(--warning); }
 .notice { display: flex; gap: 10px; padding: 12px; border-radius: 10px; font-size: 13px; background: var(--info-bg); color: var(--primary-dark); }
 .notice.warning { background: var(--warning-bg); }

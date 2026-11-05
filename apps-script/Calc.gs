@@ -572,9 +572,111 @@ var Calc = (function () {
   }
   function weekOf(start, date) { return Math.floor(daysBetween(start, date) / 7) + 1; }
 
+  /* ============================================================
+   * Tahap 4 — Kontrol proyek: CCO, realisasi, opname, eskalasi
+   * ============================================================ */
+  // nilai bertanda satu baris CCO: TAMBAH (+), KURANG (−), GANTI (selisih harga × volume)
+  function ccoJumlah(c) {
+    var j = norm(c.JENIS), v = Math.abs(num(c.VOLUME)), h = num(c.HARGA_SATUAN);
+    if (j === 'KURANG') return -round(v * h, 0);
+    if (j === 'GANTI') return round(v * (h - num(c.HARGA_LAMA)), 0);
+    return round(v * h, 0);
+  }
+  function emptyKat() { return { BAHAN: 0, UPAH: 0, ALAT: 0, LAINNYA: 0 }; }
+  // rk = hasil rekap(); opt = { realisasi, cco, kontrak, waspada }
+  function kontrol(rk, opt) {
+    opt = opt || {};
+    var waspada = num(opt.waspada) || 90;
+    var divOf = {}, div = {}, order = [];
+    rk.groups.forEach(function (g) {
+      var id = g.row.ID;
+      divOf[id] = id;
+      g.items.forEach(function (it) { divOf[it.ID] = id; });
+      div[id] = { id: id, kode: g.row.KODE || '', uraian: g.row.URAIAN, rab: g.subtotal, cco: 0, real: 0, kat: emptyKat(), n: 0 };
+      order.push(id);
+    });
+    var lain = { id: '', kode: '-', uraian: 'Tidak terkait item RAB', rab: 0, cco: 0, real: 0, kat: emptyKat(), n: 0 };
+    var cco = { tambah: 0, kurang: 0, net: 0, diajukan: 0, nDiajukan: 0, n: 0 };
+    (opt.cco || []).forEach(function (c) {
+      if (isDel(c)) return;
+      var j = ccoJumlah(c), st = norm(c.STATUS);
+      if (st === 'DIAJUKAN') { cco.diajukan += j; cco.nDiajukan++; return; }
+      if (st !== 'DISETUJUI') return;
+      cco.n++; cco.net += j;
+      if (j >= 0) cco.tambah += j; else cco.kurang += j;
+      var d = div[c.DIVISI_ID] || div[divOf[c.ITEM_ID]] || lain;
+      d.cco += j;
+    });
+    var real = 0, kat = emptyKat();
+    (opt.realisasi || []).forEach(function (r) {
+      if (isDel(r)) return;
+      var n = num(r.NOMINAL), k = norm(r.KATEGORI);
+      if (!(k in kat)) k = 'LAINNYA';
+      var d = div[divOf[r.ITEM_ID]] || lain;
+      d.real += n; d.kat[k] += n; d.n++;
+      real += n; kat[k] += n;
+    });
+    var list = order.map(function (id) { return div[id]; });
+    if (lain.real || lain.cco) list.push(lain);
+    function stat(d) {
+      d.anggaran = d.rab + d.cco;
+      d.sisa = d.anggaran - d.real;
+      d.serapan = d.anggaran > 0 ? d.real / d.anggaran * 100 : (d.real > 0 ? 999 : 0);
+      d.status = d.anggaran <= 0 && d.real > 0 ? 'TANPA ANGGARAN' : d.serapan > 100 ? 'OVER BUDGET' : (d.serapan > waspada ? 'WASPADA' : 'AMAN');
+      if (d.anggaran <= 0) d.serapan = 0;
+      return d;
+    }
+    list.forEach(stat);
+    // RAB addendum: nilai pekerjaan C + CCO disetujui, lalu kontinjensi, PPN & pembulatan seperti RAB awal
+    var C2 = rk.C + cco.net;
+    var D2 = round(C2 * rk.kontPct / 100, 0), E2 = C2 + D2, ppn2 = round(E2 * rk.ppnPct / 100, 0), F2 = E2 + ppn2;
+    var total2 = roundTo(F2, rk.pembulatan, 'atas');
+    // nilai kontrak addendum: CCO dinilai dengan faktor yang sama seperti kontrak awal (markup/PPN penawaran)
+    var kontrak = num(opt.kontrak), faktor = kontrak > 0 && rk.C > 0 ? kontrak / rk.C : 1;
+    var kontrak2 = kontrak > 0 ? round(kontrak + cco.net * faktor, 0) : 0;
+    var all = stat({ rab: rk.C, cco: cco.net, real: real });
+    return {
+      rows: list, real: real, kat: kat, cco: cco,
+      rabAwal: rk.total, rabAddendum: total2, C2: C2, D2: D2, ppn2: ppn2,
+      kontrak: kontrak, kontrakAddendum: kontrak2, faktorKontrak: faktor,
+      anggaran: all.anggaran, sisa: all.sisa, serapan: all.serapan, status: all.status,
+      cadangan: D2
+    };
+  }
+  // opname termin: tagihan = % progres × nilai kontrak − nilai progres yang sudah ditagih − retensi
+  function opname(o) {
+    var persen = Math.max(0, Math.min(100, num(o.persen)));
+    var nilai = round(num(o.kontrak) * persen / 100, 0);
+    var prev = Math.max(0, num(o.prev));
+    var periode = Math.max(0, nilai - prev);
+    var retensi = round(periode * num(o.retensiPct) / 100, 0);
+    return { persen: persen, nilai: nilai, prev: prev, periode: periode, retensi: retensi, tagihan: periode - retensi };
+  }
+  // eskalasi harga material: porsi bahan × kenaikan %/tahun × jarak (bulan) titik tengah pekerjaan dari tanggal harga
+  // tasks: { idDivisi: {es, ef} }, cal: array tanggal hari kerja, porsiPasar: asumsi porsi bahan item harga pasar (%)
+  function eskalasi(rk, tasks, cal, opt) {
+    opt = opt || {};
+    var pctTahun = num(opt.pctTahun), porsi = opt.porsiPasar === undefined ? 60 : num(opt.porsiPasar);
+    var base = opt.tanggalHarga || cal[0];
+    var out = { total: 0, rows: [], bulanMaks: 0 };
+    rk.groups.forEach(function (g) {
+      var r = tasks[g.row.ID];
+      if (!r || g.smkk) return;
+      var mid = cal[Math.min(cal.length - 1, Math.floor((r.es + r.ef) / 2))];
+      var bulan = Math.max(0, daysBetween(base, mid) / 30.4375);
+      var bahan = g.bahan + g.lain * porsi / 100;
+      var e = round(bahan * pctTahun / 100 * bulan / 12, 0);
+      out.bulanMaks = Math.max(out.bulanMaks, bulan);
+      out.total += e;
+      out.rows.push({ id: g.row.ID, kode: g.row.KODE || '', uraian: g.row.URAIAN, bahan: bahan, bulan: bulan, eskalasi: e });
+    });
+    return out;
+  }
+
   return {
     parseYmd: parseYmd, ymd: ymd, addDays: addDays, daysBetween: daysBetween, calendar: calendar, schedule: schedule, kurvaS: kurvaS, planPct: planPct, weekOf: weekOf,
     roleClass: roleClass, tenaga: tenaga,
+    ccoJumlah: ccoJumlah, kontrol: kontrol, opname: opname, eskalasi: eskalasi,
     num: num, round: round, isDel: isDel, norm: norm, buildIndex: buildIndex, hsdPrice: hsdPrice,
     analyze: analyze, itemCalc: itemCalc, ctxFromProject: ctxFromProject, roundTo: roundTo,
     rekap: rekap, isSmkk: isSmkk, volumeFromDetails: volumeFromDetails, takeoff: takeoff,

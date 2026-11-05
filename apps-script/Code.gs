@@ -10,7 +10,7 @@
  * dan Sheet dibuka ulang. Jalankan "1. Setup Awal" sekali saja.
  * ============================================================ */
 
-var APP = { name: 'RAB Rumah & Gedung', version: '1.2.0', tz: 'Asia/Jakarta' };
+var APP = { name: 'RAB Rumah & Gedung', version: '1.3.0', tz: 'Asia/Jakarta' };
 
 var THEME = {
   primary: '#1F4E79', primaryDark: '#0E2A45', primary50: '#EAF2FA',
@@ -26,7 +26,8 @@ var STATUS_COLORS = {
   'TERVERIFIKASI': 'success', 'OK': 'success', 'DITERIMA': 'success', 'SELESAI': 'success', 'AMAN': 'success', 'SESUAI': 'success', 'DISETUJUI': 'success',
   'PERLU CEK': 'warning', 'PERLU HARGA': 'warning', 'DRAFT': 'warning', 'NEGOSIASI': 'warning', 'WASPADA': 'warning', 'DIAJUKAN': 'warning',
   'DITOLAK': 'danger', 'KEDALUWARSA': 'danger', 'BATAL': 'danger', 'TERLAMBAT': 'danger', 'OVER BUDGET': 'danger',
-  'TERKIRIM': 'info', 'BERJALAN': 'info', 'PENAWARAN': 'info', 'RENCANA': 'info', 'TERCAPAI': 'success'
+  'TERKIRIM': 'info', 'BERJALAN': 'info', 'PENAWARAN': 'info', 'RENCANA': 'info', 'TERCAPAI': 'success',
+  'DIBAYAR': 'success', 'TAMBAH': 'info', 'KURANG': 'warning', 'GANTI': 'info', 'TANPA ANGGARAN': 'warning', 'TIDAK': 'danger'
 };
 
 /* ---------- Skema sheet ----------
@@ -34,7 +35,7 @@ var STATUS_COLORS = {
  * Kolom ID selalu pertama; UPDATED_AT & DELETED selalu terakhir. */
 var SCHEMA = {
   // Proyek & RAB
-  PROYEK: { group: 'RAB', cols: ['KODE', 'NAMA', 'PEMILIK', 'LOKASI', 'JENIS_BANGUNAN', 'JUMLAH_LANTAI:num', 'LUAS_TANAH:num', 'LUAS_BANGUNAN:num', 'LUAS_PER_LANTAI', 'TAHUN_ANGGARAN:num', 'WILAYAH', 'VERSI_AHSP', 'PROFIL_ID', 'MODE', 'OVERHEAD_PCT:pct', 'PPN_PCT:pct', 'KONTINJENSI_PCT:pct', 'PEMBULATAN:num', 'TOTAL_RAB:rp', 'NILAI_KONTRAK:rp', 'STATUS', 'FOLDER_ID', 'CATATAN', 'TANGGAL_MULAI:date'] },
+  PROYEK: { group: 'RAB', cols: ['KODE', 'NAMA', 'PEMILIK', 'LOKASI', 'JENIS_BANGUNAN', 'JUMLAH_LANTAI:num', 'LUAS_TANAH:num', 'LUAS_BANGUNAN:num', 'LUAS_PER_LANTAI', 'TAHUN_ANGGARAN:num', 'WILAYAH', 'VERSI_AHSP', 'PROFIL_ID', 'MODE', 'OVERHEAD_PCT:pct', 'PPN_PCT:pct', 'KONTINJENSI_PCT:pct', 'PEMBULATAN:num', 'TOTAL_RAB:rp', 'NILAI_KONTRAK:rp', 'STATUS', 'FOLDER_ID', 'CATATAN', 'TANGGAL_MULAI:date', 'ESKALASI_PCT:pct'] },
   DIVISI: { group: 'RAB', cols: ['KODE', 'NAMA', 'URUTAN:num', 'MODE', 'KETERANGAN'] },
   RAB_ITEM: { group: 'RAB', freezeCols: 6, cols: ['PROYEK_ID', 'PARENT_ID', 'TIPE_BARIS', 'URUTAN:num', 'KODE', 'URAIAN', 'SATUAN', 'VOLUME:num', 'JENIS_HARGA', 'KODE_AHSP', 'HARGA_PASAR:rp', 'SUMBER_HARGA', 'HARGA_SATUAN:rp', 'JUMLAH:rp', 'UPAH:rp', 'BAHAN:rp', 'ALAT:rp', 'BOBOT:pct', 'SPESIFIKASI', 'CATATAN'] },
   VOLUME_DETAIL: { group: 'RAB', cols: ['PROYEK_ID', 'ITEM_ID', 'URUTAN:num', 'KETERANGAN', 'PANJANG:num', 'LEBAR:num', 'TINGGI:num', 'JUMLAH:num', 'PENGURANG', 'HASIL:num'] },
@@ -60,14 +61,15 @@ var SCHEMA = {
   PROGRES: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'MINGGU_KE:num', 'ITEM_ID', 'PERSEN_AKTUAL:pct', 'TANGGAL:date', 'CATATAN', 'FOTO'] },
   LIBUR: { group: 'SISTEM', cols: ['TANGGAL:date', 'KETERANGAN'] },
   MILESTONE: { group: 'SISTEM', cols: ['PROYEK_ID', 'NAMA', 'TANGGAL:date', 'STATUS'] },
-  // Kontrol (tahap 4, header disiapkan)
-  REALISASI: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'TANGGAL:date', 'ITEM_ID', 'KATEGORI', 'VENDOR', 'URAIAN', 'NOMINAL:rp', 'FOTO_NOTA', 'CATATAN'] },
-  CCO: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'NOMOR', 'JENIS', 'ITEM_ID', 'URAIAN', 'SATUAN', 'VOLUME:num', 'HARGA_SATUAN:rp', 'JUMLAH:rp', 'ALASAN', 'STATUS', 'TANGGAL:date'] },
-  OPNAME: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'PERIODE', 'TANGGAL:date', 'PERSEN_PROGRES:pct', 'NILAI_PROGRES:rp', 'TERMIN_SEBELUMNYA:rp', 'RETENSI:rp', 'NILAI_TAGIHAN:rp', 'STATUS', 'FILE_ID'] },
+  // Kontrol proyek (tahap 4)
+  REALISASI: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'TANGGAL:date', 'ITEM_ID', 'KATEGORI', 'VENDOR', 'URAIAN', 'NOMINAL:rp', 'FOTO_NOTA', 'CATATAN', 'FOTO_URL', 'DIINPUT_OLEH'] },
+  CCO: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'NOMOR', 'JENIS', 'ITEM_ID', 'URAIAN', 'SATUAN', 'VOLUME:num', 'HARGA_SATUAN:rp', 'JUMLAH:rp', 'ALASAN', 'STATUS', 'TANGGAL:date', 'DIVISI_ID', 'KODE_AHSP', 'HARGA_LAMA:rp', 'SPESIFIKASI', 'CATATAN', 'FILE_ID', 'FILE_URL'] },
+  OPNAME: { group: 'PELAKSANAAN', cols: ['PROYEK_ID', 'PERIODE', 'TANGGAL:date', 'PERSEN_PROGRES:pct', 'NILAI_PROGRES:rp', 'TERMIN_SEBELUMNYA:rp', 'RETENSI:rp', 'NILAI_TAGIHAN:rp', 'STATUS', 'FILE_ID', 'NOMOR', 'JENIS', 'MINGGU_KE:num', 'NILAI_KONTRAK:rp', 'RETENSI_PCT:pct', 'NILAI_PERIODE:rp', 'FILE_URL', 'CATATAN', 'DETAIL_JSON:json'] },
   // Penawaran
   PENAWARAN: { group: 'PENAWARAN', cols: ['PROYEK_ID', 'NOMOR', 'REV:num', 'TANGGAL:date', 'KLIEN_NAMA', 'KLIEN_ALAMAT', 'PERIHAL', 'PROFIL_ID', 'DETAIL', 'MARKUP_PCT:pct', 'MARKUP_DIVISI_JSON:json', 'DIVISI_SETTING_JSON:json', 'BULAT_SATUAN:num', 'BULAT_TOTAL:num', 'DISKON_TIPE', 'DISKON_NILAI:num', 'PPN_MODE', 'PPN_PCT:pct', 'MASA_BERLAKU_HARI:num', 'WAKTU_PELAKSANAAN', 'TERMIN', 'GARANSI', 'LINGKUP', 'EXCLUSIONS', 'SYARAT', 'SPESIFIKASI', 'TAMPIL_REKENING', 'TAMPIL_HARGA_M2', 'TAMPIL_CREDIT', 'SUBTOTAL:rp', 'DISKON:rp', 'PPN:rp', 'TOTAL:rp', 'TOTAL_RAB_INTERNAL:rp', 'STATUS', 'FILE_ID', 'FILE_URL'] },
   PENAWARAN_ITEM: { group: 'PENAWARAN', cols: ['PENAWARAN_ID', 'URUTAN:num', 'TIPE_BARIS', 'KODE', 'URAIAN', 'SATUAN', 'VOLUME:num', 'HARGA_SATUAN:rp', 'JUMLAH:rp', 'SPESIFIKASI'] },
   // Sistem
+  AKSES: { group: 'SISTEM', cols: ['NAMA', 'PERAN', 'PIN_HASH', 'PROYEK_IDS', 'AKTIF', 'TERAKHIR_LOGIN:ts', 'CATATAN'] },
   FILES: { group: 'SISTEM', cols: ['PROYEK_ID', 'JENIS', 'NAMA_FILE', 'FILE_ID', 'URL', 'TERKAIT', 'TANGGAL:date', 'UKURAN:num'] },
   LOG: { group: 'SISTEM', cols: ['WAKTU:ts', 'AKSI', 'TABEL', 'RECORD_ID', 'DETAIL', 'SUMBER'] }
 };
@@ -93,6 +95,12 @@ var DROPDOWN = {
   'PENAWARAN.DETAIL': ['RINGKAS', 'STANDAR', 'LUMPSUM'],
   'PENAWARAN.PPN_MODE': ['BELUM', 'TERMASUK', 'TIDAK'],
   'CCO.STATUS': ['DIAJUKAN', 'DISETUJUI', 'DITOLAK'],
+  'CCO.JENIS': ['TAMBAH', 'KURANG', 'GANTI'],
+  'REALISASI.KATEGORI': ['BAHAN', 'UPAH', 'ALAT', 'LAINNYA'],
+  'OPNAME.JENIS': ['TERMIN', 'RETENSI'],
+  'OPNAME.STATUS': ['DRAFT', 'DIAJUKAN', 'DISETUJUI', 'DIBAYAR'],
+  'AKSES.PERAN': ['PENGAWAS', 'VIEWER'],
+  'AKSES.AKTIF': ['YA', 'TIDAK'],
   'BORONGAN_UPAH.MODE': ['M2', 'ITEM', 'HARIAN_TUKANG', 'HARIAN_PEKERJA'],
   'TERMIN_UPAH.BASIS': ['AHSP', 'M2', 'ITEM', 'HARIAN'],
   'TERMIN_UPAH.STATUS': ['DRAFT', 'DISETUJUI'],
@@ -109,7 +117,11 @@ var DEFAULT_SETTINGS = [
   ['OVERHEAD_PCT', 10, 'Biaya umum & keuntungan default (%), maksimal sesuai Permen yang berlaku'],
   ['PPN_PCT', 11, 'PPN efektif default (%), sesuaikan bila aturan berubah'],
   ['KONTINJENSI_PCT', 5, 'Biaya tak terduga default (%), isi 0 untuk mematikan'],
-  ['RETENSI_PCT', 5, 'Retensi default (%) — dipakai di tahap 4'],
+  ['RETENSI_PCT', 5, 'Retensi default (%) yang ditahan dari setiap tagihan termin'],
+  ['SERAPAN_WASPADA', 90, 'Kontrol biaya: status waspada bila serapan anggaran divisi > … %'],
+  ['SELISIH_BIAYA_PROGRES', 15, 'Peringatan bila % biaya terpakai melebihi % progres fisik lebih dari … poin'],
+  ['ESKALASI_PCT_DEFAULT', 5, 'Eskalasi harga material default (%/tahun) — Mode Gedung, proyek > 6 bulan'],
+  ['PORSI_BAHAN_PASAR', 60, 'Asumsi porsi bahan pada item harga pasar untuk hitung eskalasi (%)'],
   ['PEMBULATAN', 1000, 'Pembulatan total RAB ke atas (1 = tanpa pembulatan)'],
   ['WILAYAH_DEFAULT', 'Kabupaten Bogor', 'Wilayah harga default proyek baru'],
   ['VERSI_AHSP_AKTIF', 'CONTOH', 'Versi library AHSP yang aktif'],
@@ -562,17 +574,20 @@ function doGet(e) {
 function doPost(e) {
   var body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'Format request tidak valid' }); }
-  if (!body || body.token !== getToken_()) return json_({ ok: false, error: 'Token salah atau belum diisi' });
+  if (body && body.action === 'login') { try { return json_(apiLogin_(body)); } catch (err) { return json_({ ok: false, error: String(err && err.message || err) }); } }
+  var who = body ? authOf_(body.token) : null;
+  if (!who) return json_({ ok: false, error: 'Token salah, belum diisi, atau akses sudah dicabut' });
+  var owner = who.role === 'OWNER';
   try {
     switch (body.action) {
-      case 'ping': return json_({ ok: true, app: APP.name, version: APP.version, time: nowIso_() });
-      case 'pull': return json_(apiPull_(body));
-      case 'push': return json_(withLock_(function () { return apiPush_(body); }));
-      case 'upload': return json_(apiUpload_(body));
+      case 'ping': return json_({ ok: true, app: APP.name, version: APP.version, time: nowIso_(), role: who.role, user: who.nama || '', projects: who.projects || [] });
+      case 'pull': return json_(apiPull_(body, who));
+      case 'push': return json_(withLock_(function () { return apiPush_(body, who); }));
+      case 'upload': return json_(apiUpload_(body, who));
       case 'getFile': return json_(apiGetFile_(body));
-      case 'share': return json_(apiShare_(body));
-      case 'projectFolder': return json_({ ok: true, folderId: projectFolder_(body.proyekId).getId() });
-      case 'backup': weeklyBackup(); return json_({ ok: true });
+      case 'share': if (!owner) throw new Error('Hanya Owner yang bisa membuat link'); return json_(apiShare_(body));
+      case 'projectFolder': if (!owner) throw new Error('Hanya Owner'); return json_({ ok: true, folderId: projectFolder_(body.proyekId).getId() });
+      case 'backup': if (!owner) throw new Error('Hanya Owner'); weeklyBackup(); return json_({ ok: true });
       default: return json_({ ok: false, error: 'Aksi tidak dikenal: ' + body.action });
     }
   } catch (err) {
@@ -587,26 +602,96 @@ function withLock_(fn) {
   try { return fn(); } finally { lock.releaseLock(); }
 }
 
+/* ============================================================
+ * AKSES TIM — Owner (token utama), Pengawas & Viewer (nama + PIN)
+ * ============================================================ */
+var PENGAWAS_TABLES = ['PROGRES', 'REALISASI'];
+var PENGAWAS_FOLDERS = ['05_Nota', '06_Progres'];
+function sha256Hex_(str) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, str, Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+function sessionSig_(u) {
+  var raw = Utilities.computeHmacSha256Signature(u.ID + '|' + u.PIN_HASH + '|' + Calc.norm(u.PERAN) + '|' + u.PROYEK_IDS, getToken_());
+  return raw.map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('').substring(0, 32);
+}
+function projList_(s) { return String(s || '').split(/[,;\s]+/).filter(String); }
+function authOf_(token) {
+  if (!token) return null;
+  if (token === getToken_()) return { role: 'OWNER' };
+  var m = /^s\.([^.]+)\.([0-9a-f]{32})$/.exec(String(token));
+  if (!m) return null;
+  var u = readTable_('AKSES').filter(function (r) { return r.ID === m[1]; })[0];
+  if (!u || Calc.isDel(u) || Calc.norm(u.AKTIF) === 'TIDAK' || !u.PIN_HASH) return null;
+  if (sessionSig_(u) !== m[2]) return null;
+  var role = Calc.norm(u.PERAN) === 'PENGAWAS' ? 'PENGAWAS' : 'VIEWER';
+  return { role: role, id: u.ID, nama: u.NAMA, projects: projList_(u.PROYEK_IDS) };
+}
+function apiLogin_(b) {
+  var nama = String(b.nama || '').trim(), pin = String(b.pin || '').trim();
+  if (!nama || !pin) throw new Error('Isi nama & PIN');
+  var cache = CacheService.getScriptCache(), ck = 'LOGIN_' + nama.toUpperCase();
+  var fails = +(cache.get(ck) || 0);
+  if (fails >= 5) throw new Error('Terlalu banyak percobaan. Coba lagi 15 menit lagi.');
+  var cand = readTable_('AKSES').filter(function (r) { return !Calc.isDel(r) && Calc.norm(r.AKTIF) !== 'TIDAK' && Calc.norm(r.NAMA) === Calc.norm(nama); });
+  var u = cand.filter(function (r) { return r.PIN_HASH && sha256Hex_('RABPIN|' + r.ID + '|' + pin) === r.PIN_HASH; })[0];
+  if (!u) { cache.put(ck, String(fails + 1), 900); log_('LOGIN GAGAL', 'AKSES', '', nama, 'API'); throw new Error('Nama atau PIN salah'); }
+  cache.remove(ck);
+  setCell_('AKSES', u.ID, 'TERAKHIR_LOGIN', new Date());
+  log_('LOGIN', 'AKSES', u.ID, u.NAMA + ' (' + u.PERAN + ')', 'API');
+  var role = Calc.norm(u.PERAN) === 'PENGAWAS' ? 'PENGAWAS' : 'VIEWER';
+  return { ok: true, token: 's.' + u.ID + '.' + sessionSig_(u), role: role, user: u.NAMA, projects: projList_(u.PROYEK_IDS), app: APP.name, version: APP.version };
+}
+function setCell_(name, id, col, val) {
+  var sh = sheet_(name); if (!sh) return;
+  var data = sh.getDataRange().getValues(), H = data[0], iId = H.indexOf('ID'), iC = H.indexOf(col);
+  if (iC < 0) return;
+  for (var r = 1; r < data.length; r++) if (data[r][iId] === id) { sh.getRange(r + 1, iC + 1).setValue(val); return; }
+}
+/* tabel yang terikat proyek → disaring sesuai daftar proyek anggota tim */
+function allowedProject_(who, pid) { return who.role === 'OWNER' || !who.projects.length || who.projects.indexOf(pid) >= 0; }
+
 /* pull: semua baris yang berubah setelah `since` (ISO). since kosong = semua data. */
-function apiPull_(body) {
+function apiPull_(body, who) {
+  who = who || { role: 'OWNER' };
   var since = body.since || '';
   var only = body.tables || Object.keys(SCHEMA);
-  var out = {};
+  var out = {}, pnAllowed = null;
   only.forEach(function (name) {
     if (!SCHEMA[name] || name === 'LOG') return;
-    out[name] = readTable_(name).filter(function (r) { return !since || String(r.UPDATED_AT || '') > since || !r.UPDATED_AT; });
+    if (name === 'AKSES' && who.role !== 'OWNER') return;
+    var list = readTable_(name).filter(function (r) { return !since || String(r.UPDATED_AT || '') > since || !r.UPDATED_AT; });
+    if (name === 'AKSES') list = list.map(function (r) { var c = Object.assign({}, r); delete c.PIN_HASH; c.ADA_PIN = r.PIN_HASH ? 'YA' : 'TIDAK'; return c; });
+    if (who.role !== 'OWNER' && who.projects.length) {
+      if (name === 'PROYEK') list = list.filter(function (r) { return allowedProject_(who, r.ID); });
+      else if (name === 'PENAWARAN_ITEM') {
+        if (!pnAllowed) { pnAllowed = {}; readTable_('PENAWARAN').forEach(function (p) { if (allowedProject_(who, p.PROYEK_ID)) pnAllowed[p.ID] = 1; }); }
+        list = list.filter(function (r) { return pnAllowed[r.PENAWARAN_ID]; });
+      } else if (headersOf_(name).indexOf('PROYEK_ID') >= 0) list = list.filter(function (r) { return !r.PROYEK_ID || allowedProject_(who, r.PROYEK_ID); });
+    }
+    out[name] = list;
   });
-  return { ok: true, serverTime: nowIso_(), tables: out };
+  return { ok: true, serverTime: nowIso_(), tables: out, role: who.role };
 }
 
 /* push: changes = [{table, row}] → upsert berdasarkan ID, last-write-wins via UPDATED_AT */
-function apiPush_(body) {
+function apiPush_(body, who) {
+  who = who || { role: 'OWNER' };
+  if (who.role === 'VIEWER') throw new Error('Akses Viewer hanya untuk melihat');
   var changes = body.changes || [];
-  var byTable = {};
-  changes.forEach(function (c) { if (SCHEMA[c.table] && c.table !== 'LOG' && c.row && c.row.ID) (byTable[c.table] = byTable[c.table] || []).push(c.row); });
+  var byTable = {}, rejected = [];
+  changes.forEach(function (c) {
+    if (!SCHEMA[c.table] || c.table === 'LOG' || !c.row || !c.row.ID) return;
+    if (who.role === 'PENGAWAS') {
+      if (PENGAWAS_TABLES.indexOf(c.table) < 0 || !allowedProject_(who, c.row.PROYEK_ID)) { rejected.push({ table: c.table, id: c.row.ID }); return; }
+    }
+    (byTable[c.table] = byTable[c.table] || []).push(c.row);
+  });
+  if (who.role === 'PENGAWAS') guardPengawas_(byTable, who, rejected);
   var applied = [], conflicts = [], stamp = nowIso_();
-  // validasi hitung ulang RAB_ITEM di server
+  // validasi hitung ulang di server
   if (byTable.RAB_ITEM) validateRabItems_(byTable.RAB_ITEM, byTable.PROYEK || []);
+  validateKontrol_(byTable);
   Object.keys(byTable).forEach(function (name) {
     var sh = sheet_(name) || ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), name);
     var data = sh.getDataRange().getValues();
@@ -641,8 +726,36 @@ function apiPush_(body) {
     });
     if (appends.length) sh.getRange(sh.getLastRow() + 1, 1, appends.length, H.length).setValues(appends);
   });
-  if (changes.length) log_('PUSH', Object.keys(byTable).join(','), '', applied.length + ' baris, ' + conflicts.length + ' konflik', 'PWA');
-  return { ok: true, serverTime: stamp, applied: applied, conflicts: conflicts };
+  if (changes.length) log_('PUSH', Object.keys(byTable).join(','), '', applied.length + ' baris, ' + conflicts.length + ' konflik' + (rejected.length ? ', ' + rejected.length + ' ditolak' : '') + (who.nama ? ' · ' + who.nama : ''), who.role === 'OWNER' ? 'PWA' : who.role);
+  return { ok: true, serverTime: stamp, applied: applied, conflicts: conflicts, rejected: rejected };
+}
+/* Pengawas: baris lama harus milik proyek yang diizinkan; realisasi hanya boleh diubah oleh penginputnya */
+function guardPengawas_(byTable, who, rejected) {
+  Object.keys(byTable).forEach(function (name) {
+    var cur = {}; readTable_(name).forEach(function (r) { cur[r.ID] = r; });
+    byTable[name] = byTable[name].filter(function (row) {
+      var old = cur[row.ID];
+      var ok = !old || (allowedProject_(who, old.PROYEK_ID) && (name !== 'REALISASI' || !old.DIINPUT_OLEH || old.DIINPUT_OLEH === who.nama));
+      if (!ok) rejected.push({ table: name, id: row.ID });
+      if (ok && name === 'REALISASI') row.DIINPUT_OLEH = old && old.DIINPUT_OLEH ? old.DIINPUT_OLEH : who.nama;
+      return ok;
+    });
+  });
+}
+/* hitung ulang nilai CCO & opname di server (rumus sama dengan PWA, lewat Calc.gs) */
+function validateKontrol_(byTable) {
+  (byTable.CCO || []).forEach(function (c) {
+    if (Calc.isDel(c) || c.VOLUME === undefined || c.HARGA_SATUAN === undefined) return;
+    var j = Calc.ccoJumlah(c);
+    if (Math.abs(j - Calc.num(c.JUMLAH)) > 1) { log_('KOREKSI', 'CCO', c.ID, 'JUMLAH ' + c.JUMLAH + ' → ' + j, 'VALIDASI'); c.JUMLAH = j; }
+  });
+  (byTable.OPNAME || []).forEach(function (o) {
+    if (Calc.isDel(o) || Calc.norm(o.JENIS) === 'RETENSI' || o.PERSEN_PROGRES === undefined || o.NILAI_KONTRAK === undefined) return;
+    var r = Calc.opname({ persen: o.PERSEN_PROGRES, kontrak: o.NILAI_KONTRAK, prev: o.TERMIN_SEBELUMNYA, retensiPct: o.RETENSI_PCT });
+    if (Math.abs(r.tagihan - Calc.num(o.NILAI_TAGIHAN)) > 1 || Math.abs(r.retensi - Calc.num(o.RETENSI)) > 1) log_('KOREKSI', 'OPNAME', o.ID, 'TAGIHAN ' + o.NILAI_TAGIHAN + ' → ' + r.tagihan, 'VALIDASI');
+    o.NILAI_PROGRES = r.nilai; o.NILAI_PERIODE = r.periode; o.RETENSI = r.retensi; o.NILAI_TAGIHAN = r.tagihan;
+  });
+  (byTable.REALISASI || []).forEach(function (r) { if (r.NOMINAL !== undefined && Calc.num(r.NOMINAL) < 0) r.NOMINAL = 0; });
 }
 
 function validateRabItems_(items, incomingProjects) {
@@ -667,7 +780,10 @@ function validateRabItems_(items, incomingProjects) {
 }
 
 /* upload file (base64) ke folder proyek/master */
-function apiUpload_(b) {
+function apiUpload_(b, who) {
+  who = who || { role: 'OWNER' };
+  if (who.role === 'VIEWER') throw new Error('Akses Viewer hanya untuk melihat');
+  if (who.role === 'PENGAWAS' && (PENGAWAS_FOLDERS.indexOf(b.kategori) < 0 || !allowedProject_(who, b.proyekId))) throw new Error('Pengawas hanya bisa mengunggah foto nota & progres');
   var folder;
   if (b.kategori === 'MASTER') folder = folderById_(settingsMap_().MASTER_FOLDER_ID);
   else if (b.kategori === 'PROFIL') folder = folderById_(settingsMap_().PROFIL_FOLDER_ID);

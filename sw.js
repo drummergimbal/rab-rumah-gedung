@@ -1,5 +1,5 @@
 /* RAB Rumah & Gedung — Service Worker (by DG) */
-const VERSION = 'rab-v1.2.1';
+const VERSION = 'rab-v1.3.0';
 const SHELL = [
   './', 'index.html', 'style.css', 'calc.js', 'app.js', 'manifest.json', 'favicon.ico',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon.svg', 'icons/apple-touch-icon.png',

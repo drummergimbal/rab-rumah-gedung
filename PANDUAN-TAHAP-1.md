@@ -328,5 +328,5 @@ Uji 3 item (harga DKI Jakarta, biaya umum & keuntungan 15%):
 | AHSP | Rincian | HSP |
 |---|---|---|
 | CK-1.2.1.1.3 Galian tanah 1 m³ manual | 0,4 OH × Rp 229.195 + 0,04 OH × Rp 277.239 = Rp 102.768 → ×1,15 | **Rp 118.183** |
-| CK-3.6.1.1 Dinding bata merah 1 batu, 1 m² | upah Rp 146.999 + bata 143,81 × Rp 800 + semen 43,5 kg × Rp 1.500 + pasir 0,08 m³ × Rp 450.000 = Rp 363.296 → ×1,15 | **Rp 417.791** |
+| CK-3.6.1.1 Dinding bata merah 1 batu, 1 m² | upah Rp 146.998 + bata 143,81 × Rp 800 + semen 43,5 kg × Rp 1.500 + pasir 0,08 m³ × Rp 450.000 = Rp 363.296 → ×1,15 | **Rp 417.791** |
 | CK-2.2.1.1.1 Pembesian slab BjTP < 12 mm, 1 kg | upah Rp 3.670 + besi 1,02 kg × Rp 11.400 + kawat 0,015 kg × Rp 25.000 = Rp 15.673 → ×1,15 | **Rp 18.024** |

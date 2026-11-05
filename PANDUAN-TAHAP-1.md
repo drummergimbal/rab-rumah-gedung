@@ -310,3 +310,23 @@ Peran diperiksa di server (Apps Script), bukan hanya di tampilan.
 - Uang muka (DP) belum dihitung terpisah di opname — catat di kolom catatan atau sesuaikan nilai tagihan termin pertama.
 - Eskalasi = estimasi internal (porsi bahan × %/tahun × jarak waktu), bukan rumus kontrak.
 - Pengawas & Viewer bisa melihat harga RAB internal. Jangan beri akses Viewer ke klien; kirim PDF penawaran.
+
+---
+
+# Library AHSP resmi & harga 2026 (v1.4.0)
+
+**Master → Import → "Impor / Perbarui AHSP resmi & harga"** memasang:
+- **2.483 AHSP Bidang Cipta Karya** dari *SE Dirjen Bina Konstruksi No. 47/SE/Dk/2026, Lampiran VI* (pengganti SE 30/2025), kode `CK-<kode SE>`, ±13.250 koefisien. Lansekap 4.1 (analisis penanaman) dan Jalan/Drainase permukiman (div. 7–8) sebagian besar belum ikut karena format tabelnya berbeda.
+- **Harga dasar 2026**: DKI Jakarta (Bangun Jakarta – DCKTRP DKI) serta Kota Semarang & Kota Surakarta (MAS PETRUK – Dinas PU Jateng, rata-rata harga min–maks).
+- **Wilayah acuan**: Kabupaten Bogor, Kota Bogor, Kota Depok → DKI Jakarta; Kota Yogyakarta → Kota Surakarta. Harga acuan ditandai "wilayah acuan" di analisa. Ubah di Master → Pengaturan → Wilayah harga → Acuan.
+- Komponen tanpa harga resmi ditandai **PERLU HARGA** (Master → Harga Dasar, filter status).
+- Harga yang dicocokkan lewat nama mirip/generik berstatus **PERLU CEK** — sumber pencocokan tertulis di kolom SUMBER.
+- Impor ulang aman: ID baris tetap, hanya yang berubah dikirim; baris SE47 lama yang tidak ada lagi ditandai terhapus.
+
+Uji 3 item (harga DKI Jakarta, biaya umum & keuntungan 15%):
+
+| AHSP | Rincian | HSP |
+|---|---|---|
+| CK-1.2.1.1.3 Galian tanah 1 m³ manual | 0,4 OH × Rp 229.195 + 0,04 OH × Rp 277.239 = Rp 102.768 → ×1,15 | **Rp 118.183** |
+| CK-3.6.1.1 Dinding bata merah 1 batu, 1 m² | upah Rp 146.999 + bata 143,81 × Rp 800 + semen 43,5 kg × Rp 1.500 + pasir 0,08 m³ × Rp 450.000 = Rp 363.296 → ×1,15 | **Rp 417.791** |
+| CK-2.2.1.1.1 Pembesian slab BjTP < 12 mm, 1 kg | upah Rp 3.670 + besi 1,02 kg × Rp 11.400 + kawat 0,015 kg × Rp 25.000 = Rp 15.673 → ×1,15 | **Rp 18.024** |

@@ -3,7 +3,7 @@
  * RAB + AHSP/HSD + Master + Import + Profil + Penawaran + PDF ke Drive
  * ============================================================ */
 'use strict';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const TABLES = ['PROYEK', 'DIVISI', 'RAB_ITEM', 'VOLUME_DETAIL', 'REVISI', 'REVISI_ITEM', 'AHSP_HEADER', 'AHSP_KOMPONEN', 'AHSP_VERSI',
   'HSD_UPAH', 'HSD_BAHAN', 'HSD_ALAT', 'WILAYAH', 'PENGATURAN', 'PROFIL_USAHA', 'TEMPLATE_SYARAT', 'IMPORT_MAPPING',
   'PENAWARAN', 'PENAWARAN_ITEM', 'FILES', 'JADWAL', 'TENAGA_REKAP', 'BORONGAN_UPAH', 'TERMIN_UPAH', 'PROGRES', 'LIBUR', 'MILESTONE'];
@@ -227,33 +227,38 @@ function applyServerRow(t, row) {
   else if (i >= 0) arr[i] = row; else arr.push(row);
   markDirty(t);
 }
+async function pushQueue() {
+  const keys = Object.keys(S.queue);
+  for (let i = 0; i < keys.length; i += 200) {
+    const chunk = keys.slice(i, i + 200).filter(k => S.queue[k]);
+    if (!chunk.length) continue;
+    const sentAt = nowIso();
+    const changes = chunk.map(k => { S.queue[k].sentAt = sentAt; return { table: S.queue[k].table, row: Object.assign({}, S.queue[k].row, { BASE_UPDATED_AT: S.queue[k].base || '' }) }; });
+    const r = await api('push', { changes });
+    chunk.forEach(k => { const q = S.queue[k]; if (q && q.row.UPDATED_AT <= q.sentAt) delete S.queue[k]; });
+    (r.applied || []).forEach(a => applyServerRow(a.table, a.row));
+    (r.conflicts || []).forEach(c => { delete S.queue[c.table + '|' + c.id]; applyServerRow(c.table, c.server); });
+    if ((r.conflicts || []).length) toast(`${r.conflicts.length} data diperbarui dari Sheet (versi Sheet lebih baru)`, '');
+  }
+}
 async function sync({ full = false, quiet = true } = {}) {
   if (S.syncing) return;
   if (!S.meta.apiUrl || !S.meta.token) { renderSync(); return; }
   if (!navigator.onLine) { S.online = false; renderSync(); return; }
   S.syncing = true; renderSync();
   try {
-    // 1) upload file tertunda
-    await processUploads();
-    // 2) push perubahan
-    const keys = Object.keys(S.queue);
-    for (let i = 0; i < keys.length; i += 200) {
-      const chunk = keys.slice(i, i + 200).filter(k => S.queue[k]);
-      const sentAt = nowIso();
-      const changes = chunk.map(k => { S.queue[k].sentAt = sentAt; return { table: S.queue[k].table, row: Object.assign({}, S.queue[k].row, { BASE_UPDATED_AT: S.queue[k].base || '' }) }; });
-      const r = await api('push', { changes });
-      chunk.forEach(k => { const q = S.queue[k]; if (q && q.row.UPDATED_AT <= q.sentAt) delete S.queue[k]; });
-      (r.applied || []).forEach(a => applyServerRow(a.table, a.row));
-      (r.conflicts || []).forEach(c => { delete S.queue[c.table + '|' + c.id]; applyServerRow(c.table, c.server); });
-      if ((r.conflicts || []).length) toast(`${r.conflicts.length} data diperbarui dari Sheet (versi Sheet lebih baru)`, '');
-    }
+    // 1) push perubahan data dulu (proyek baru harus ada di Sheet sebelum file diunggah)
+    await pushQueue();
+    // 2) upload file tertunda — gagal upload tidak menghentikan sinkron data
+    try { await processUploads(); } catch (e) { S.uploadError = e.message; console.warn('upload tertunda:', e.message); }
+    if (Object.keys(S.queue).length) await pushQueue(); // hasil hook upload (file id)
     // 3) pull
     const since = full ? '' : S.meta.lastSync;
     const p = await api('pull', { since });
     if (full) { TABLES.forEach(t => { if (p.tables[t]) { const pend = Object.values(S.queue).filter(q => q.table === t).map(q => q.row); S.t[t] = p.tables[t].filter(r => !Calc.isDel(r)); pend.forEach(r => applyLocal(t, r)); markDirty(t); } }); }
     else Object.keys(p.tables || {}).forEach(t => { if (S.t[t]) p.tables[t].forEach(r => applyServerRow(t, r)); });
     S.meta.lastSync = p.serverTime;
-    S.lastError = ''; S.online = true;
+    S.lastError = S.uploadError || ''; S.uploadError = ''; S.online = true;
     await saveMeta(); flushTables();
     if (!quiet) toast('Sinkron selesai', 'ok');
     if (!CUR.dirty) rerenderSoft(); // jangan hapus isian yang sedang diketik
